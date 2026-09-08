@@ -68,7 +68,7 @@
       cursor: pointer;
     }
 
-    /* 手機操作時的中間地圖 */
+    /* 手機畫面中間即時地圖 */
     #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
@@ -106,11 +106,15 @@
     .time-badge { font-family: monospace; font-weight: bold; background: #334155; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
     .loc-text { color: #cbd5e1; font-size: 11px; margin-top: 1px; }
 
-    /* ================= 專為 PDF 列印設定的樣式 ================= */
+    /* ================= A4 精準列印樣式 (滿版放大與居中) ================= */
     #print-wrapper { display: none; }
 
+    @page {
+      size: A4 portrait;
+      margin: 10mm 12mm 10mm 12mm;
+    }
+
     @media print {
-      /* 隱藏螢幕操作介面 */
       #top-bar, #action-container, #map-container, #stream-panel { display: none !important; }
       
       html, body {
@@ -125,35 +129,37 @@
         width: 100% !important;
       }
 
-      /* 第一頁樣式 */
+      /* 第一頁：考核統計與數據表 */
       .page-one {
         page-break-after: always !important;
         break-after: page !important;
-        padding: 24px;
-        min-height: 95vh;
+        height: 260mm !important;
+        box-sizing: border-box;
       }
-      .print-header { border-bottom: 2px solid #dc2626; padding-bottom: 6px; margin-bottom: 12px; }
-      .print-title { font-size: 20px; font-weight: bold; color: #dc2626; display: flex; justify-content: space-between; }
-      .print-time-row { font-size: 11px; color: #4b5563; font-weight: 600; margin-top: 4px; }
-      .print-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
+      .print-header { border-bottom: 2px solid #dc2626; padding-bottom: 4px; margin-bottom: 10px; }
+      .print-title { font-size: 20px; font-weight: bold; color: #dc2626; display: flex; justify-content: space-between; align-items: flex-end; }
+      .print-time-row { font-size: 11px; color: #4b5563; font-weight: 600; margin-top: 3px; }
+      .print-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }
       .print-kpi-box { border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 2px; text-align: center; }
       .print-kpi-label { font-size: 9px; color: #64748b; }
-      .print-kpi-num { font-size: 13px; font-weight: bold; margin-top: 1px; }
+      .print-kpi-num { font-size: 13px; font-weight: bold; margin-top: 1px; color: #0f172a; }
       .print-table { width: 100%; border-collapse: collapse; font-size: 10px; }
       .print-table th, .print-table td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left; }
       .print-table th { background: #f1f5f9; }
 
-      /* 第二頁：滿版大街道地圖 */
+      /* 第二頁：滿版大圖、居中放大 */
       .page-two {
         page-break-before: always !important;
         break-before: page !important;
-        padding: 20px;
-        height: 96vh !important;
+        height: 265mm !important;
         box-sizing: border-box;
+        display: flex !important;
+        flex-direction: column !important;
       }
       #print-map-container {
+        flex: 1 !important;
         width: 100% !important;
-        height: 85vh !important;
+        min-height: 240mm !important;
         border: 2px solid #94a3b8;
         border-radius: 6px;
       }
@@ -189,7 +195,7 @@
   <!-- 操作按鈕區 -->
   <div id="action-container">
     <button id="actionBtn" class="main-btn" onclick="toggleTracking()">出勤開始 (START)</button>
-    <button id="exportPdfBtn" onclick="triggerPrintPDF()">📄 匯出 2 頁式 PDF 考核報告 (包含街道底圖)</button>
+    <button id="exportPdfBtn" onclick="triggerPrintPDF()">📄 匯出 2 頁式 PDF 考核報告 (滿版居中街圖)</button>
   </div>
 
   <!-- 中間即時地圖 (操作用) -->
@@ -258,7 +264,7 @@
       </table>
     </div>
 
-    <!-- 第二頁：滿版地圖 (直接由 Leaflet 渲染街道底圖) -->
+    <!-- 第二頁：滿版大街道地圖 (100% 居中放大) -->
     <div class="page-two">
       <div class="print-header">
         <div class="print-title">
@@ -271,11 +277,10 @@
   </div>
 
   <script>
-    // 預設香港中心坐標
     let map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 15);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-    let printMap = null; // 專供第二頁列印的大地圖
+    let printMap = null; 
 
     let isTracking = false;
     let watchId = null;
@@ -488,13 +493,7 @@
       
       document.getElementById('exportPdfBtn').style.display = 'block';
 
-      // 自適應縮放
-      if (points.length > 1) {
-        const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
-        map.fitBounds(bounds, { padding: [40, 40] });
-      }
-
-      // 自動觸發列印
+      // 觸發列印
       setTimeout(() => {
         triggerPrintPDF();
       }, 500);
@@ -528,7 +527,7 @@
       if (el) el.innerText = `${dur}s`;
     }
 
-    // 觸發列印的核心邏輯：初始化第二頁的大地圖
+    // 核心：精確計算路線範圍，滿版並 100% 居中放大第二頁地圖
     function triggerPrintPDF() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const hours = totalSeconds / 3600;
@@ -558,34 +557,54 @@
         tbody.appendChild(tr);
       });
 
-      // 初始化第二頁滿版大地圖容器
+      // 初始化列印大地圖
       if (!printMap) {
         printMap = L.map('print-map-container', { zoomControl: false });
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(printMap);
+      } else {
+        printMap.eachLayer((layer) => {
+          if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
+            printMap.removeLayer(layer);
+          }
+        });
       }
 
-      // 同步軌跡到第二頁大地圖
+      // 繪製軌跡並計算精確居中 Bounds
       if (points.length >= 2) {
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
           const p2 = points[i + 1];
           L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], {
             color: getSpeedColor((p1.speed + p2.speed) / 2),
-            weight: 7,
-            opacity: 0.9
+            weight: 9,
+            opacity: 0.95
           }).addTo(printMap);
         }
+
+        // 標註起點與到達點
+        L.circleMarker([points[0].lat, points[0].lng], {
+          radius: 10, color: '#fff', weight: 3, fillColor: '#10b981', fillOpacity: 1
+        }).addTo(printMap);
+
+        L.circleMarker([points[points.length - 1].lat, points[points.length - 1].lng], {
+          radius: 10, color: '#fff', weight: 3, fillColor: '#3b82f6', fillOpacity: 1
+        }).addTo(printMap);
+
+        // 自動居中並計算最佳比例尺（內留 50px 邊距，保證整條路線最大化居中）
         const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
-        printMap.fitBounds(bounds, { padding: [30, 30] });
+        printMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
       } else {
-        printMap.setView(map.getCenter(), 16);
+        // 室內或單點測試時居中顯示
+        const center = points.length > 0 ? [points[0].lat, points[0].lng] : [22.3193, 114.1694];
+        printMap.setView(center, 17);
+        L.circleMarker(center, { radius: 10, color: '#fff', weight: 3, fillColor: '#ef4444', fillOpacity: 1 }).addTo(printMap);
       }
 
-      // 重新計算尺寸並喚起列印
+      // 等待 800ms 讓 Leaflet 充分完成尺寸重繪與瓦片載入，然後喚起列印
       setTimeout(() => {
         printMap.invalidateSize();
         window.print();
-      }, 300);
+      }, 800);
     }
   </script>
 </body>
