@@ -7,14 +7,14 @@
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- 直接輸出 PDF 函式庫 -->
+  <!-- 直接生成 PDF 下載，不調用列印 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* 頂部即時儀表 */
+    /* 頂部即時核心儀表 */
     #top-bar {
       background: #1e293b;
       padding: 6px 8px;
@@ -71,7 +71,7 @@
     }
     #status-hint { font-size: 10px; text-align: center; color: #38bdf8; min-height: 12px; }
 
-    /* 中間即時地圖 */
+    /* 手機操作介面地圖 */
     #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
@@ -109,8 +109,8 @@
     .time-badge { font-family: monospace; font-weight: bold; background: #334155; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
     .loc-text { color: #cbd5e1; font-size: 11px; margin-top: 1px; }
 
-    /* ================= 匯出 2 頁式 A4 PDF 專用結構 ================= */
-    #pdf-export-container {
+    /* ================= 匯出 PDF 專用結構 (隱藏，轉檔時調用) ================= */
+    #pdf-render-root {
       display: none;
       background: #ffffff;
       color: #111827;
@@ -118,48 +118,48 @@
       font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "PingFang TC", sans-serif;
     }
 
-    .pdf-a4-page {
+    .pdf-page-block {
       width: 760px;
-      height: 1050px;
+      height: 1060px;
       padding: 24px 28px;
       box-sizing: border-box;
       position: relative;
       background: #fff;
     }
-    .page-break-tag {
+    .pdf-break {
       page-break-after: always;
       break-after: page;
     }
 
-    .print-header { border-bottom: 2px solid #dc2626; padding-bottom: 6px; margin-bottom: 12px; }
-    .print-title { font-size: 20px; font-weight: bold; color: #dc2626; display: flex; justify-content: space-between; align-items: flex-end; }
-    .print-time-row { font-size: 11px; color: #4b5563; font-weight: 600; margin-top: 4px; }
+    .pdf-head { border-bottom: 2px solid #dc2626; padding-bottom: 6px; margin-bottom: 12px; }
+    .pdf-main-title { font-size: 20px; font-weight: bold; color: #dc2626; display: flex; justify-content: space-between; align-items: flex-end; }
+    .pdf-time-sub { font-size: 11px; color: #4b5563; font-weight: 600; margin-top: 4px; }
 
-    .print-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
-    .print-kpi-box { border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 2px; text-align: center; background: #f8fafc; }
-    .print-kpi-label { font-size: 9px; color: #64748b; }
-    .print-kpi-num { font-size: 13px; font-weight: bold; margin-top: 1px; color: #0f172a; }
+    .pdf-kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
+    .pdf-kpi-card { border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 2px; text-align: center; background: #f8fafc; }
+    .pdf-kpi-label { font-size: 9px; color: #64748b; }
+    .pdf-kpi-val { font-size: 13px; font-weight: bold; margin-top: 1px; color: #0f172a; }
 
-    .print-table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 10px; }
-    .print-table th, .print-table td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
-    .print-table th { background: #f1f5f9; }
+    .pdf-table-box { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 10px; }
+    .pdf-table-box th, .pdf-table-box td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+    .pdf-table-box th { background: #f1f5f9; }
 
-    /* 第二頁：滿版地圖容器 */
-    #pdf-page-map-box {
+    /* 第二頁：正中央滿版地圖 Canvas */
+    #pdf-map-canvas-container {
       width: 100%;
       height: 900px;
       border: 2px solid #94a3b8;
       border-radius: 6px;
       overflow: hidden;
       position: relative;
-      background: #e2e8f0;
+      background: #f1f5f9;
     }
-    #pdf-map-canvas {
+    #pdf-canvas-element {
       width: 100%;
       height: 100%;
       display: block;
     }
-    .map-legend {
+    .map-legend-tag {
       position: absolute;
       top: 14px;
       left: 14px;
@@ -172,8 +172,8 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.15);
       z-index: 10;
     }
-    .legend-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
-    .color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .legend-line { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    .legend-color { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   </style>
 </head>
 <body>
@@ -206,7 +206,7 @@
   <div id="action-container">
     <button id="actionBtn" class="main-btn" onclick="toggleTracking()">出勤開始 (START)</button>
     <div id="status-hint"></div>
-    <button id="downloadPdfBtn" onclick="exportDirectPDF()">📄 重新下載 2 頁式 PDF 考核報告</button>
+    <button id="downloadPdfBtn" onclick="runDirectPdfExport()">📄 重新下載 2 頁式 PDF 考核報告</button>
   </div>
 
   <!-- 手機即時地圖 -->
@@ -224,46 +224,46 @@
     </div>
   </div>
 
-  <!-- ================= 2 頁式 PDF 渲染模板 (直接轉檔下載) ================= -->
-  <div id="pdf-export-container">
+  <!-- ================= 2 頁式 PDF 導出模板 ================= -->
+  <div id="pdf-render-root">
     
-    <!-- 第一頁：數據統計與路況時間軸 -->
-    <div class="pdf-a4-page page-break-tag">
-      <div class="print-header">
-        <div class="print-title">
+    <!-- 第一頁：保證為數據與時間軸 (PAGE 1) -->
+    <div class="pdf-page-block pdf-break">
+      <div class="pdf-head">
+        <div class="pdf-main-title">
           <span>消防車輛駕駛出勤 / 考試分析報告</span>
           <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第一頁：數據統計與路況時間軸</span>
         </div>
-        <div class="print-time-row" id="p-times-summary">
+        <div class="pdf-time-sub" id="p-times-summary">
           出勤起步時間：- ｜ 到達目的地時間：-
         </div>
       </div>
 
-      <div class="print-kpi-grid">
-        <div class="print-kpi-box">
-          <div class="print-kpi-label">總耗時</div>
-          <div class="print-kpi-num" id="p-time">00:00</div>
+      <div class="pdf-kpi-row">
+        <div class="pdf-kpi-card">
+          <div class="pdf-kpi-label">總耗時</div>
+          <div class="pdf-kpi-val" id="p-time">00:00</div>
         </div>
-        <div class="print-kpi-box">
-          <div class="print-kpi-label">總行駛距離</div>
-          <div class="print-kpi-num" id="p-dist">0.00 km</div>
+        <div class="pdf-kpi-card">
+          <div class="pdf-kpi-label">總行駛距離</div>
+          <div class="pdf-kpi-val" id="p-dist">0.00 km</div>
         </div>
-        <div class="print-kpi-box">
-          <div class="print-kpi-label">平均車速</div>
-          <div class="print-kpi-num" id="p-avg">0.0 km/h</div>
+        <div class="pdf-kpi-card">
+          <div class="pdf-kpi-label">平均車速</div>
+          <div class="pdf-kpi-val" id="p-avg">0.0 km/h</div>
         </div>
-        <div class="print-kpi-box">
-          <div class="print-kpi-label">最高車速</div>
-          <div class="print-kpi-num" id="p-max">0.0 km/h</div>
+        <div class="pdf-kpi-card">
+          <div class="pdf-kpi-label">最高車速</div>
+          <div class="pdf-kpi-val" id="p-max">0.0 km/h</div>
         </div>
-        <div class="print-kpi-box">
-          <div class="print-kpi-label">受阻停頓 (&le;5km/h)</div>
-          <div class="print-kpi-num" id="p-stop" style="color:#b91c1c;">0 秒</div>
+        <div class="pdf-kpi-card">
+          <div class="pdf-kpi-label">受阻停頓 (&le;5km/h)</div>
+          <div class="pdf-kpi-val" id="p-stop" style="color:#b91c1c;">0 秒</div>
         </div>
       </div>
 
       <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">行車記錄與停頓位置詳細說明</div>
-      <table class="print-table">
+      <table class="pdf-table-box">
         <thead>
           <tr>
             <th style="width: 14%;">累積時間</th>
@@ -276,23 +276,23 @@
       </table>
     </div>
 
-    <!-- 第二頁：滿版大街道地圖 (最後一點/路線幾何居中) -->
-    <div class="pdf-a4-page">
-      <div class="print-header">
-        <div class="print-title">
+    <!-- 第二頁：保證為滿版置中地圖 (PAGE 2) -->
+    <div class="pdf-page-block">
+      <div class="pdf-head">
+        <div class="pdf-main-title">
           <span>行車速度與路線全景軌跡地圖</span>
           <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第二頁：真實街道底圖與軌跡</span>
         </div>
       </div>
-      <div id="pdf-page-map-box">
-        <canvas id="pdf-map-canvas" width="1000" height="1200"></canvas>
-        <div class="map-legend">
+      <div id="pdf-map-canvas-container">
+        <canvas id="pdf-canvas-element" width="1000" height="1200"></canvas>
+        <div class="map-legend-tag">
           <div style="font-weight:bold; margin-bottom:4px; border-bottom:1px solid #cbd5e1; padding-bottom:2px;">速度顏色指標</div>
-          <div class="legend-row"><span class="color-dot" style="background:#ef4444;"></span> 紅色：&le; 5 km/h (停車/受阻)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#f97316;"></span> 橙色：5 - 25 km/h (慢行)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#eab308;"></span> 黃色：25 - 50 km/h (巡航)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#22c55e;"></span> 綠色：50 - 70 km/h (快速)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#3b82f6;"></span> 藍色：> 70 km/h (高速)</div>
+          <div class="legend-line"><span class="legend-color" style="background:#ef4444;"></span> 紅色：&le; 5 km/h (停車/受阻)</div>
+          <div class="legend-line"><span class="legend-color" style="background:#f97316;"></span> 橙色：5 - 25 km/h (慢行)</div>
+          <div class="legend-line"><span class="legend-color" style="background:#eab308;"></span> 黃色：25 - 50 km/h (巡航)</div>
+          <div class="legend-line"><span class="legend-color" style="background:#22c55e;"></span> 綠色：50 - 70 km/h (快速)</div>
+          <div class="legend-line"><span class="legend-color" style="background:#3b82f6;"></span> 藍色：> 70 km/h (高速)</div>
         </div>
       </div>
     </div>
@@ -513,10 +513,11 @@
       btn.className = 'main-btn';
       
       document.getElementById('downloadPdfBtn').style.display = 'block';
-      document.getElementById('status-hint').innerText = '🗺️ 正在計算最佳路線覆蓋範圍並直接下載 PDF...';
+      document.getElementById('status-hint').innerText = '🗺️ 正在生成置中大地圖並直接下載 PDF 檔案...';
 
+      // 真正直接下載 PDF，不再觸發列印
       setTimeout(() => {
-        exportDirectPDF();
+        runDirectPdfExport();
       }, 500);
     }
 
@@ -551,7 +552,7 @@
     function lon2tile(lon, zoom) { return (lon + 180) / 360 * Math.pow(2, zoom); }
     function lat2tile(lat, zoom) { return (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom); }
 
-    function loadTileImage(url) {
+    function fetchTileImg(url) {
       return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -561,9 +562,9 @@
       });
     }
 
-    // 核心演算法：按路線覆蓋範圍自動定比例尺，並將最後一點/路線嚴格置中
-    async function drawFullMapCanvas() {
-      const canvas = document.getElementById('pdf-map-canvas');
+    // 核心演算法：將整條路線/最後一點 100% 幾何置中在 Canvas (w/2, h/2)
+    async function buildCenteredMapCanvas() {
+      const canvas = document.getElementById('pdf-canvas-element');
       const ctx = canvas.getContext('2d');
       const w = canvas.width;
       const h = canvas.height;
@@ -571,77 +572,61 @@
       ctx.fillStyle = "#f8fafc";
       ctx.fillRect(0, 0, w, h);
 
-      // 取得基準中心點：優先以「最後到達點」為地圖中心
-      let centerLat = 22.3193, centerLng = 114.1694;
-      if (points.length > 0) {
-        const lastPt = points[points.length - 1];
-        centerLat = lastPt.lat;
-        centerLng = lastPt.lng;
-      } else {
-        const c = map.getCenter();
-        centerLat = c.lat;
-        centerLng = c.lng;
-      }
-
-      // 計算路線包圍盒以決定覆蓋比例尺
-      let minLat = centerLat, maxLat = centerLat, minLng = centerLng, maxLng = centerLng;
+      let minLat = 999, maxLat = -999, minLng = 999, maxLng = -999;
       if (points.length >= 2) {
-        minLat = 999; maxLat = -999; minLng = 999; maxLng = -999;
         points.forEach(p => {
           if (p.lat < minLat) minLat = p.lat;
           if (p.lat > maxLat) maxLat = p.lat;
           if (p.lng < minLng) minLng = p.lng;
           if (p.lng > maxLng) maxLng = p.lng;
         });
-
-        // 加入整段路線長寬的對稱外邊距，保證路線能舒適覆蓋但不過度溢出
-        const latSpan = (maxLat - minLat) || 0.002;
-        const lngSpan = (maxLng - minLng) || 0.002;
-        const margin = 0.20;
-        minLat -= latSpan * margin; maxLat += latSpan * margin;
-        minLng -= lngSpan * margin; maxLng += lngSpan * margin;
       } else {
-        minLat = centerLat - 0.004; maxLat = centerLat + 0.004;
-        minLng = centerLng - 0.004; maxLng = centerLng + 0.004;
+        const c = points.length > 0 ? points[0] : map.getCenter();
+        minLat = c.lat - 0.003; maxLat = c.lat + 0.003;
+        minLng = c.lng - 0.003; maxLng = c.lng + 0.003;
       }
 
-      // 自動推算剛好適配這張畫布 (1000x1200) 的最佳 Zoom Level
+      // 計算路線的幾何物理中心 (正中央對齊)
+      const centerLat = (minLat + maxLat) / 2;
+      const centerLng = (minLng + maxLng) / 2;
+
+      // 自動推算剛好適配整張畫布的最大縮放層級 (Zoom)
       let zoom = 16;
       for (let z = 18; z >= 12; z--) {
-        const pixelW = (lon2tile(maxLng, z) - lon2tile(minLng, z)) * 256;
-        const pixelH = (lat2tile(minLat, z) - lat2tile(maxLat, z)) * 256;
-        if (pixelW <= w * 0.88 && pixelH <= h * 0.88) {
+        const pw = (lon2tile(maxLng, z) - lon2tile(minLng, z)) * 256;
+        const ph = (lat2tile(minLat, z) - lat2tile(maxLat, z)) * 256;
+        if (pw <= w * 0.75 && ph <= h * 0.75) {
           zoom = z;
           break;
         }
       }
 
-      // 以中心點座標對齊畫布正中央 (w/2, h/2)
+      // 嚴格將中心座標錨定在 Canvas 正中心 (w/2, h/2)
       const centerTileX = lon2tile(centerLng, zoom);
       const centerTileY = lat2tile(centerLat, zoom);
 
-      function coordToPixel(lat, lng) {
-        const px = (lon2tile(lng, zoom) - centerTileX) * 256 + w / 2;
-        const py = (lat2tile(lat, zoom) - centerTileY) * 256 + h / 2;
-        return { x: px, y: py };
+      function posToCanvasPixel(lat, lng) {
+        const x = (lon2tile(lng, zoom) - centerTileX) * 256 + w / 2;
+        const y = (lat2tile(lat, zoom) - centerTileY) * 256 + h / 2;
+        return { x, y };
       }
 
-      // 下載真實街道底圖瓦片拼貼
-      const minTX = Math.floor(lon2tile(minLng, zoom)) - 1;
-      const maxTX = Math.floor(lon2tile(maxLng, zoom)) + 1;
-      const minTY = Math.floor(lat2tile(maxLat, zoom)) - 1;
-      const maxTY = Math.floor(lat2tile(minLat, zoom)) + 1;
+      // 下載真實街道底圖
+      const minTileX = Math.floor(centerTileX - (w / 2 / 256)) - 1;
+      const maxTileX = Math.ceil(centerTileX + (w / 2 / 256)) + 1;
+      const minTileY = Math.floor(centerTileY - (h / 2 / 256)) - 1;
+      const maxTileY = Math.ceil(centerTileY + (h / 2 / 256)) + 1;
 
       const tileTasks = [];
-      for (let tx = minTX; tx <= maxTX; tx++) {
-        for (let ty = minTY; ty <= maxTY; ty++) {
+      for (let tx = minTileX; tx <= maxTileX; tx++) {
+        for (let ty = minTileY; ty <= maxTileY; ty++) {
           const url = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
           tileTasks.push((async () => {
-            const img = await loadTileImage(url);
+            const img = await fetchTileImg(url);
             if (img) {
-              const posX = (tx - centerTileX) * 256 + w / 2;
-              const posY = (ty - centerTileY) * 256 + h / 2;
-              ctx.drawImage(img, posX, posY, 256, 256);
+              const x = (tx - centerTileX) * 256 + w / 2;
+              const y = (ty - centerTileY) * 256 + h / 2;
+              ctx.drawImage(img, x, y, 256, 256);
             }
           })());
         }
@@ -649,18 +634,18 @@
 
       await Promise.allSettled(tileTasks);
 
-      // 疊加 15% 微淡白層，突顯彩色路線
+      // 疊加微淡遮罩
       ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
       ctx.fillRect(0, 0, w, h);
 
-      // 繪製冷暖色速度軌跡
+      // 繪製彩色軌跡
       if (points.length >= 2) {
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
           const p2 = points[i + 1];
           const segSpeed = (p1.speed + p2.speed) / 2;
-          const pos1 = coordToPixel(p1.lat, p1.lng);
-          const pos2 = coordToPixel(p2.lat, p2.lng);
+          const pos1 = posToCanvasPixel(p1.lat, p1.lng);
+          const pos2 = posToCanvasPixel(p2.lat, p2.lng);
 
           // 白色勾邊
           ctx.lineWidth = 14;
@@ -669,53 +654,53 @@
           ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
           ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
 
-          // 核心速度色彩
+          // 速度線
           ctx.lineWidth = 9;
           ctx.strokeStyle = getSpeedColor(segSpeed);
           ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
         }
 
-        // 標註起點 (綠色大圓)
-        const startPos = coordToPixel(points[0].lat, points[0].lng);
+        // 標註起點 (綠圈)
+        const startPos = posToCanvasPixel(points[0].lat, points[0].lng);
         ctx.fillStyle = "#10b981"; ctx.beginPath(); ctx.arc(startPos.x, startPos.y, 14, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
         ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
         ctx.fillText("起點 (出發)", startPos.x + 18, startPos.y + 6);
 
-        // 標註停頓點 (紅色警告圈與編號)
-        let stopIdx = 1;
+        // 標註停頓點
+        let sIdx = 1;
         for (let i = 0; i < points.length; i++) {
           if (points[i].speed <= 5.0 && (i === 0 || points[i-1].speed > 5.0)) {
-            const sPos = coordToPixel(points[i].lat, points[i].lng);
+            const sPos = posToCanvasPixel(points[i].lat, points[i].lng);
             ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(sPos.x, sPos.y, 15, 0, Math.PI * 2); ctx.fill();
             ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
 
             ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(stopIdx.toString(), sPos.x, sPos.y + 5);
+            ctx.fillText(sIdx.toString(), sPos.x, sPos.y + 5);
 
             ctx.fillStyle = "#b91c1c"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left";
-            ctx.fillText(`停頓#${stopIdx}`, sPos.x + 18, sPos.y + 5);
-            stopIdx++;
+            ctx.fillText(`停頓#${sIdx}`, sPos.x + 18, sPos.y + 5);
+            sIdx++;
           }
         }
 
-        // 標註最後一點 (終點 100% 居中)
-        const endPos = coordToPixel(points[points.length - 1].lat, points[points.length - 1].lng);
+        // 標註最後一點 (終點)
+        const endPos = posToCanvasPixel(points[points.length - 1].lat, points[points.length - 1].lng);
         ctx.fillStyle = "#3b82f6"; ctx.beginPath(); ctx.arc(endPos.x, endPos.y, 15, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
         ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
-        ctx.fillText("終點 (現場/置中)", endPos.x + 18, endPos.y + 6);
+        ctx.fillText("終點 (現場)", endPos.x + 18, endPos.y + 6);
       } else {
-        const cPos = coordToPixel(centerLat, centerLng);
+        const cPos = posToCanvasPixel(centerLat, centerLng);
         ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(cPos.x, cPos.y, 12, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
         ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
-        ctx.fillText("當前停駐中心位置", cPos.x + 16, cPos.y + 6);
+        ctx.fillText("當前停駐中心位置 (街道正中)", cPos.x + 16, cPos.y + 6);
       }
     }
 
-    // 直接匯出 2 頁式 PDF 檔案 (免去列印對話框)
-    async function exportDirectPDF() {
+    // 真正直接匯出 2 頁式 PDF 檔案
+    async function runDirectPdfExport() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const hours = totalSeconds / 3600;
       const avgSpeed = hours > 0 ? (distKm / hours).toFixed(1) : "0.0";
@@ -744,11 +729,11 @@
         tbody.appendChild(tr);
       });
 
-      // 繪製自動比例與居中的滿版地圖
-      await drawFullMapCanvas();
+      // 繪製正中央對齊的滿版地圖
+      await buildCenteredMapCanvas();
 
-      // 顯示容器並直接生成下載 PDF
-      const container = document.getElementById('pdf-export-container');
+      // 顯示容器進行轉換
+      const container = document.getElementById('pdf-render-root');
       container.style.display = 'block';
 
       const opt = {
@@ -761,7 +746,7 @@
 
       html2pdf().set(opt).from(container).save().then(() => {
         container.style.display = 'none';
-        document.getElementById('status-hint').innerText = '✅ 2 頁式 PDF 考核報告已成功下載！';
+        document.getElementById('status-hint').innerText = '✅ 2 頁式 PDF 考核報告已成功下載至手機！';
       });
     }
   </script>
