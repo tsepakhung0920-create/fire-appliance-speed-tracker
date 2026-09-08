@@ -3,55 +3,82 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>消防出勤測速與軌跡系統</title>
+  <title>消防出勤測速與街道路況分析</title>
   
-  <!-- 免費 Leaflet 地圖樣式與腳本 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; }
-    
-    /* 頂部儀表板 */
-    #dashboard {
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* 頂部即時核心儀表 */
+    #top-bar {
       background: #1e293b;
-      color: #fff;
+      padding: 10px 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px;
+      text-align: center;
+      border-bottom: 2px solid #334155;
+      z-index: 1000;
+    }
+    .kpi-title { font-size: 11px; color: #94a3b8; margin-bottom: 2px; }
+    .kpi-value { font-size: 18px; font-weight: bold; }
+    .kpi-speed { font-size: 22px; color: #38bdf8; }
+
+    /* 中間區域：地圖 */
+    #map-container { height: 42vh; width: 100%; position: relative; }
+    #map { height: 100%; width: 100%; }
+
+    /* 直流分段數據面板 */
+    #stream-panel {
+      flex: 1;
+      background: #1e293b;
+      overflow-y: auto;
+      padding: 12px;
       display: flex;
-      justify-content: space-around;
-      padding: 12px 6px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      z-index: 1000;
+      flex-direction: column;
+      gap: 10px;
     }
-    .metric { text-align: center; }
-    .metric .label { font-size: 11px; color: #94a3b8; margin-bottom: 2px; }
-    .metric .val { font-size: 20px; font-weight: bold; }
-    .stopped { color: #ef4444; }
 
-    /* 地圖區域 */
-    #map { flex: 1; width: 100%; }
-
-    /* 色階圖例 */
-    #legend {
-      position: absolute;
-      bottom: 85px;
-      left: 10px;
-      background: rgba(255,255,255,0.9);
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      z-index: 1000;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    .section-title {
+      font-size: 13px;
+      color: #cbd5e1;
+      font-weight: 600;
+      border-left: 3px solid #38bdf8;
+      padding-left: 6px;
+      margin-bottom: 4px;
     }
-    .legend-item { display: flex; align-items: center; margin: 2px 0; }
-    .color-box { width: 12px; height: 12px; margin-right: 6px; border-radius: 2px; }
 
-    /* 底部操作欄 */
-    #controls { padding: 12px; background: #fff; z-index: 1000; }
+    /* 各速度區間行車時間表格 */
+    .speed-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .speed-table th { color: #64748b; text-align: left; padding: 4px 6px; font-weight: normal; }
+    .speed-table td { padding: 5px 6px; border-top: 1px solid #334155; }
+    .badge { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+    /* 停滯地點清單 */
+    #stop-list { display: flex; flex-direction: column; gap: 6px; }
+    .stop-item {
+      background: #0f172a;
+      border-left: 4px solid #ef4444;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+    .stop-item-title { font-weight: bold; color: #f8fafc; font-size: 13px; }
+    .stop-item-time { color: #94a3b8; font-size: 11px; margin-top: 2px; }
+
+    /* 底部操作控制 */
+    #control-bar { padding: 10px; background: #0f172a; z-index: 1000; border-top: 1px solid #334155; }
     #actionBtn {
       width: 100%;
       padding: 14px;
-      font-size: 18px;
+      font-size: 17px;
       font-weight: bold;
       border: none;
       border-radius: 8px;
@@ -63,62 +90,121 @@
 </head>
 <body>
 
-  <!-- 頂部即時數據 -->
-  <div id="dashboard">
-    <div class="metric">
-      <div class="label">即時時速</div>
-      <div id="speed" class="val">0.0 <span style="font-size: 12px;">km/h</span></div>
+  <!-- 頂部即時核心儀表 -->
+  <div id="top-bar">
+    <div>
+      <div class="kpi-title">即時時速</div>
+      <div id="kpi-speed" class="kpi-value kpi-speed">0.0 <span style="font-size:11px;">km/h</span></div>
     </div>
-    <div class="metric">
-      <div class="label">行車里程</div>
-      <div id="distance" class="val">0.00 <span style="font-size: 12px;">km</span></div>
+    <div>
+      <div class="kpi-title">出勤總距離</div>
+      <div id="kpi-dist" class="kpi-value">0.00 <span style="font-size:11px;">km</span></div>
     </div>
-    <div class="metric">
-      <div class="label">停滯時間 (&le;5km/h)</div>
-      <div id="stoppedTime" class="val stopped">0s</div>
+    <div>
+      <div class="kpi-title">出勤總時長</div>
+      <div id="kpi-total-time" class="kpi-value">00:00</div>
+    </div>
+    <div>
+      <div class="kpi-title">最高時速</div>
+      <div id="kpi-max-speed" class="kpi-value">0.0</div>
     </div>
   </div>
 
-  <!-- 地圖容器 -->
-  <div id="map"></div>
+  <!-- 地圖 -->
+  <div id="map-container">
+    <div id="map"></div>
+  </div>
 
-  <!-- 速度色階說明 -->
-  <div id="legend">
-    <div class="legend-item"><div class="color-box" style="background:#ef4444"></div> &le; 5 km/h (停滯/塞車)</div>
-    <div class="legend-item"><div class="color-box" style="background:#f97316"></div> 5 - 25 km/h (慢速)</div>
-    <div class="legend-item"><div class="color-box" style="background:#eab308"></div> 25 - 50 km/h (中速)</div>
-    <div class="legend-item"><div class="color-box" style="background:#22c55e"></div> 50 - 70 km/h (快速)</div>
-    <div class="legend-item"><div class="color-box" style="background:#3b82f6"></div> > 70 km/h (高速)</div>
+  <!-- 下方直流數據面板 -->
+  <div id="stream-panel">
+    
+    <!-- 各速度區間時間統計 -->
+    <div>
+      <div class="section-title">各速度區間時間統計 (直流分析)</div>
+      <table class="speed-table">
+        <thead>
+          <tr>
+            <th>速度等級</th>
+            <th>累計時間</th>
+            <th>時間佔比</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge" style="background:#ef4444;"></span>&le; 5 km/h (停車/受阻)</td>
+            <td id="t-stop" style="color:#ef4444; font-weight:bold;">0 秒</td>
+            <td id="p-stop">0%</td>
+          </tr>
+          <tr>
+            <td><span class="badge" style="background:#f97316;"></span>5 - 25 km/h (慢行)</td>
+            <td id="t-slow">0 秒</td>
+            <td id="p-slow">0%</td>
+          </tr>
+          <tr>
+            <td><span class="badge" style="background:#eab308;"></span>25 - 50 km/h (市區巡航)</td>
+            <td id="t-med">0 秒</td>
+            <td id="p-med">0%</td>
+          </tr>
+          <tr>
+            <td><span class="badge" style="background:#22c55e;"></span>50 - 70 km/h (快速)</td>
+            <td id="t-fast">0 秒</td>
+            <td id="p-fast">0%</td>
+          </tr>
+          <tr>
+            <td><span class="badge" style="background:#3b82f6;"></span>> 70 km/h (高速暢通)</td>
+            <td id="t-vfast">0 秒</td>
+            <td id="p-vfast">0%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 低於 5 公里的停車地點清單 (帶實際街道名) -->
+    <div>
+      <div class="section-title">受阻街道記錄 (&le;5 km/h 自動辨識街名)</div>
+      <div id="stop-list">
+        <div style="color: #64748b; font-size: 11px; padding: 4px 0;" id="empty-hint">暫無停車受阻記錄</div>
+      </div>
+    </div>
+
   </div>
 
   <!-- 底部按鈕 -->
-  <div id="controls">
+  <div id="control-bar">
     <button id="actionBtn" onclick="toggleTracking()">出勤開始</button>
   </div>
 
   <script>
-    let map = L.map('map').setView([22.3193, 114.1694], 14); // 預設香港中心坐標
+    let map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
     let isTracking = false;
     let watchId = null;
-    let stopTimer = null;
+    let secondTimer = null;
 
     let points = [];
     let totalDistanceMeters = 0;
-    let stoppedSeconds = 0;
-    let currentSpeedKmh = 0;
+    let maxSpeed = 0;
+    let totalSeconds = 0;
 
-    // 計算色階
+    let speedBuckets = { stop: 0, slow: 0, med: 0, fast: 0, vfast: 0 };
+    let currentStopEvent = null; 
+    let stopEventIndex = 1;
+
     function getSpeedColor(speed) {
-      if (speed <= 5.0) return '#ef4444'; // 紅色 (停滯)
-      if (speed <= 25.0) return '#f97316'; // 橙色
-      if (speed <= 50.0) return '#eab308'; // 黃色
-      if (speed <= 70.0) return '#22c55e'; // 綠色
-      return '#3b82f6';                    // 藍色 (最快)
+      if (speed <= 5.0) return '#ef4444'; // 紅
+      if (speed <= 25.0) return '#f97316'; // 橙
+      if (speed <= 50.0) return '#eab308'; // 黃
+      if (speed <= 70.0) return '#22c55e'; // 綠
+      return '#3b82f6';                    // 藍
     }
 
-    // 計算兩經緯度距離 (公尺)
+    function formatTime(totalSec) {
+      const m = Math.floor(totalSec / 60).toString().padStart(2, '0');
+      const s = (totalSec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
     function calcDistance(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
       const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -129,83 +215,156 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    function toggleTracking() {
-      if (!isTracking) {
-        startTracking();
-      } else {
-        stopTracking();
+    // 核心功能：使用經緯度自動查詢街道名稱 (繁體中文)
+    async function fetchStreetName(lat, lon) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh-TW,zh-HK`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && data.address) {
+          // 優先讀取道路名稱 (road)，其次路口或建築物
+          return data.address.road || data.address.pedestrian || data.address.suburb || "未知路段";
+        }
+      } catch (e) {
+        console.error("街名查詢失敗:", e);
       }
+      return "未知路口";
+    }
+
+    function toggleTracking() {
+      if (!isTracking) startTracking();
+      else stopTracking();
     }
 
     function startTracking() {
       if (!navigator.geolocation) {
-        alert('此裝置不支援 GPS 定位');
+        alert('此設備不支援 GPS 定位');
         return;
       }
 
       points = [];
       totalDistanceMeters = 0;
-      stoppedSeconds = 0;
-      currentSpeedKmh = 0;
+      maxSpeed = 0;
+      totalSeconds = 0;
+      stopEventIndex = 1;
+      currentStopEvent = null;
+      speedBuckets = { stop: 0, slow: 0, med: 0, fast: 0, vfast: 0 };
+      document.getElementById('stop-list').innerHTML = '';
 
-      // 保持螢幕喚醒 (若瀏覽器支援)
-      if ('wakeLock' in navigator) {
-        navigator.wakeLock.request('screen').catch(() => {});
-      }
+      if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
 
       isTracking = true;
-      document.getElementById('actionBtn').innerText = '結束出勤 (計算報告)';
+      document.getElementById('actionBtn').innerText = '結束出勤並生成分析';
       document.getElementById('actionBtn').className = 'active';
 
-      // 啟動停滯計時器
-      stopTimer = setInterval(() => {
-        if (currentSpeedKmh <= 5.0 && isTracking) {
-          stoppedSeconds++;
-          document.getElementById('stoppedTime').innerText = stoppedSeconds + 's';
+      let latestSpeed = 0;
+      secondTimer = setInterval(() => {
+        totalSeconds++;
+        document.getElementById('kpi-total-time').innerText = formatTime(totalSeconds);
+
+        if (latestSpeed <= 5.0) speedBuckets.stop++;
+        else if (latestSpeed <= 25.0) speedBuckets.slow++;
+        else if (latestSpeed <= 50.0) speedBuckets.med++;
+        else if (latestSpeed <= 70.0) speedBuckets.fast++;
+        else speedBuckets.vfast++;
+
+        updateBucketUI();
+
+        // 累計停滯時間並刷新標記內容
+        if (latestSpeed <= 5.0 && currentStopEvent) {
+          currentStopEvent.duration++;
+          currentStopEvent.marker.setPopupContent(
+            `<b>📍 ${currentStopEvent.streetName} (#${currentStopEvent.id})</b><br>` +
+            `時間: ${currentStopEvent.startTime}<br>` +
+            `受阻持續: <b style="color:red">${currentStopEvent.duration} 秒</b>`
+          );
+          updateStopItemUI(currentStopEvent);
         }
       }, 1000);
 
-      // 啟動高精度 GPS
+      // 高精度 GPS 監聽
       watchId = navigator.geolocation.watchPosition(
-        (pos) => {
+        async (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           
-          // 速度換算：原生速度 m/s 轉 km/h
-          let speed = pos.coords.speed !== null && pos.coords.speed >= 0 
-            ? pos.coords.speed * 3.6 
-            : 0;
+          let speed = pos.coords.speed !== null && pos.coords.speed >= 0 ? pos.coords.speed * 3.6 : 0;
 
-          // 若原生無速度，用前後點距離與時間估算
           if (points.length > 0 && (pos.coords.speed === null || pos.coords.speed < 0)) {
             const last = points[points.length - 1];
             const dist = calcDistance(last.lat, last.lng, lat, lng);
-            const timeDiffSec = (pos.timestamp - last.time) / 1000;
-            if (timeDiffSec > 0) speed = (dist / timeDiffSec) * 3.6;
+            const dt = (pos.timestamp - last.time) / 1000;
+            if (dt > 0) speed = (dist / dt) * 3.6;
           }
 
-          currentSpeedKmh = speed;
-          document.getElementById('speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:12px;">km/h</span>`;
-          document.getElementById('speed').style.color = getSpeedColor(speed);
+          latestSpeed = speed;
+          if (speed > maxSpeed) maxSpeed = speed;
 
-          // 累加距離並畫線
+          document.getElementById('kpi-speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:11px;">km/h</span>`;
+          document.getElementById('kpi-speed').style.color = getSpeedColor(speed);
+          document.getElementById('kpi-max-speed').innerText = maxSpeed.toFixed(1);
+
+          // 觸發停滯 (時速 <= 5 km/h)
+          if (speed <= 5.0) {
+            if (!currentStopEvent) {
+              const now = new Date();
+              const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+              
+              const marker = L.circleMarker([lat, lng], {
+                radius: 8,
+                color: '#fff',
+                weight: 2,
+                fillColor: '#ef4444',
+                fillOpacity: 0.95
+              }).addTo(map);
+
+              const eventId = stopEventIndex++;
+              currentStopEvent = {
+                id: eventId,
+                lat, lng,
+                startTime: timeStr,
+                duration: 1,
+                streetName: "正在辨識街道...",
+                marker: marker
+              };
+
+              marker.bindPopup(`<b>📍 正在辨識街道... (#${eventId})</b><br>時間: ${timeStr}<br>受阻持續: 1 秒`).openPopup();
+              addStopItemToPanel(currentStopEvent);
+
+              // 非同步查詢真實街道名稱
+              fetchStreetName(lat, lng).then((street) => {
+                if (currentStopEvent && currentStopEvent.id === eventId) {
+                  currentStopEvent.streetName = street;
+                  currentStopEvent.marker.setPopupContent(
+                    `<b>📍 ${street} (#${eventId})</b><br>` +
+                    `時間: ${timeStr}<br>` +
+                    `受阻持續: <b style="color:red">${currentStopEvent.duration} 秒</b>`
+                  );
+                }
+                const titleEl = document.getElementById(`stop-ui-title-${eventId}`);
+                if (titleEl) titleEl.innerText = `${street} (#${eventId})`;
+              });
+            }
+          } else {
+            currentStopEvent = null;
+          }
+
+          // 繪製軌跡
           if (points.length > 0) {
             const last = points[points.length - 1];
-            const dist = calcDistance(last.lat, last.lng, lat, lng);
-            totalDistanceMeters += dist;
-            document.getElementById('distance').innerHTML = `${(totalDistanceMeters / 1000).toFixed(2)} <span style="font-size:12px;">km</span>`;
+            const segDist = calcDistance(last.lat, last.lng, lat, lng);
+            totalDistanceMeters += segDist;
+            document.getElementById('kpi-dist').innerHTML = `${(totalDistanceMeters / 1000).toFixed(2)} <span style="font-size:11px;">km</span>`;
 
-            // 畫出冷暖色線段
-            const avgSpeed = (last.speed + speed) / 2;
             L.polyline([[last.lat, last.lng], [lat, lng]], {
-              color: getSpeedColor(avgSpeed),
+              color: getSpeedColor((last.speed + speed) / 2),
               weight: 6,
               opacity: 0.85
             }).addTo(map);
           }
 
           points.push({ lat, lng, speed, time: pos.timestamp });
-          map.setView([lat, lng]); // 地圖跟隨當前位置
+          map.setView([lat, lng]);
         },
         (err) => console.error(err),
         { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
@@ -215,22 +374,54 @@
     function stopTracking() {
       isTracking = false;
       if (watchId) navigator.geolocation.clearWatch(watchId);
-      if (stopTimer) clearInterval(stopTimer);
+      if (secondTimer) clearInterval(secondTimer);
 
       document.getElementById('actionBtn').innerText = '出勤開始';
       document.getElementById('actionBtn').className = '';
+      currentStopEvent = null;
+    }
 
-      // 計算總結
-      const totalTimeSec = points.length > 1 ? Math.round((points[points.length - 1].time - points[0].time) / 1000) : 0;
-      const stoppedPercent = totalTimeSec > 0 ? ((stoppedSeconds / totalTimeSec) * 100).toFixed(1) : 0;
+    function updateBucketUI() {
+      const total = totalSeconds > 0 ? totalSeconds : 1;
+      
+      document.getElementById('t-stop').innerText = `${speedBuckets.stop} 秒`;
+      document.getElementById('p-stop').innerText = `${((speedBuckets.stop / total) * 100).toFixed(0)}%`;
 
-      alert(
-        `【出勤記錄統計】\n` +
-        `總里程: ${(totalDistanceMeters / 1000).toFixed(2)} km\n` +
-        `總時間: ${Math.floor(totalTimeSec / 60)} 分 ${totalTimeSec % 60} 秒\n` +
-        `停滯阻礙時間: ${stoppedSeconds} 秒 (佔比 ${stoppedPercent}%)\n` +
-        `請查看地圖上的紅綠線路分佈。`
-      );
+      document.getElementById('t-slow').innerText = `${speedBuckets.slow} 秒`;
+      document.getElementById('p-slow').innerText = `${((speedBuckets.slow / total) * 100).toFixed(0)}%`;
+
+      document.getElementById('t-med').innerText = `${speedBuckets.med} 秒`;
+      document.getElementById('p-med').innerText = `${((speedBuckets.med / total) * 100).toFixed(0)}%`;
+
+      document.getElementById('t-fast').innerText = `${speedBuckets.fast} 秒`;
+      document.getElementById('p-fast').innerText = `${((speedBuckets.fast / total) * 100).toFixed(0)}%`;
+
+      document.getElementById('t-vfast').innerText = `${speedBuckets.vfast} 秒`;
+      document.getElementById('p-vfast').innerText = `${((speedBuckets.vfast / total) * 100).toFixed(0)}%`;
+    }
+
+    function addStopItemToPanel(stopEvt) {
+      const container = document.getElementById('stop-list');
+      const item = document.createElement('div');
+      item.className = 'stop-item';
+      item.id = `stop-ui-${stopEvt.id}`;
+      item.innerHTML = `
+        <div>
+          <div class="stop-item-title" id="stop-ui-title-${stopEvt.id}">${stopEvt.streetName} (#${stopEvt.id})</div>
+          <div class="stop-item-time">發生時間: ${stopEvt.startTime}</div>
+        </div>
+        <div style="font-weight:bold; color:#ef4444;" id="stop-ui-dur-${stopEvt.id}">1s</div>
+      `;
+      item.onclick = () => {
+        map.setView([stopEvt.lat, stopEvt.lng], 17);
+        stopEvt.marker.openPopup();
+      };
+      container.prepend(item);
+    }
+
+    function updateStopItemUI(stopEvt) {
+      const el = document.getElementById(`stop-ui-dur-${stopEvt.id}`);
+      if (el) el.innerText = `${stopEvt.duration}s`;
     }
   </script>
 </body>
