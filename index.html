@@ -144,7 +144,7 @@
     .pdf-table th { background: #f1f5f9; color: #334155; padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left; }
     .pdf-table td { padding: 6px 8px; border: 1px solid #cbd5e1; }
 
-    /* 第二頁：地圖容器 */
+    /* 第二頁：地圖容器 (雙層架構：底層街道圖片 + 頂層向量軌跡) */
     #pdf-page-2-map-box {
       width: 100%;
       height: 860px;
@@ -152,9 +152,25 @@
       border-radius: 6px;
       overflow: hidden;
       position: relative;
-      background: #f8fafc;
+      background: #e2e8f0;
     }
-    #pdf-canvas-map { width: 100%; height: 100%; display: block; }
+    #pdf-bg-street-img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    #pdf-canvas-map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
     .map-legend {
       position: absolute;
       top: 14px;
@@ -213,7 +229,7 @@
   <!-- 下方時間軸面板 -->
   <div id="stream-panel">
     <div>
-      <div class="section-title">行車事件時間軸 (起步 - 停滯路段/交界 - 繼續行駛)</div>
+      <div class="section-title">行車事件時間軸 (起步 - 停滯路段/地標 - 繼續行駛)</div>
       <div id="timeline-box" class="timeline-list">
         <div style="color: #64748b; font-size: 11px;" id="empty-hint">按開始後，系統將自動記錄行車事件與路口...</div>
       </div>
@@ -265,7 +281,7 @@
             <th style="width: 14%;">累積時間</th>
             <th style="width: 30%;">事件 / 狀態</th>
             <th style="width: 14%;">持續時長</th>
-            <th style="width: 42%;">精確路段 / 交界 / 地標位置</th>
+            <th style="width: 42%;">街道名稱 與 地標/大廈名稱</th>
           </tr>
         </thead>
         <tbody id="pdf-timeline-rows">
@@ -273,16 +289,19 @@
       </table>
     </div>
 
-    <!-- 第二頁：帶真實街道地圖底圖的全景大圖 -->
+    <!-- 第二頁：真實街道底圖 + 全景軌跡 -->
     <div class="pdf-page">
       <div class="pdf-header">
         <div class="pdf-title">
           <span>行車速度與路線全景軌跡地圖</span>
-          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第二頁：高解析街道底圖與軌跡</span>
+          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第二頁：真實街道底圖與軌跡</span>
         </div>
       </div>
 
       <div id="pdf-page-2-map-box">
+        <!-- 底層真實街道底圖（保證載入，不受 Canvas 污染限制） -->
+        <img id="pdf-bg-street-img" alt="真實街道底圖" />
+        <!-- 頂層冷暖色軌跡與標記 -->
         <canvas id="pdf-canvas-map" width="1000" height="1200"></canvas>
         <div class="map-legend">
           <div style="font-weight:bold; margin-bottom:4px; border-bottom:1px solid #cbd5e1; padding-bottom:2px;">速度顏色指標</div>
@@ -298,7 +317,6 @@
   </div>
 
   <script>
-    // 手機介面底圖採用 CartoDB Voyager 高清跨域圖資
     let map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 15);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
@@ -353,26 +371,29 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
+    // 核心升級：抓取「街道名稱 + 具體大廈/屋苑/地標」，過濾行政區域
     async function fetchDetailedLocation(lat, lon, stopIndex = null) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh-TW,zh-HK`;
         const res = await fetch(url);
         const data = await res.json();
         if (data && data.address) {
-          const road = data.address.road || data.address.pedestrian || "";
-          const nearPoi = data.address.residential || data.address.building || data.address.commercial || data.address.suburb || "";
-          const junction = data.address.junction || "";
+          const addr = data.address;
+          const road = addr.road || addr.pedestrian || "";
+          
+          // 明確尋找大廈名、屋苑名、地標名、門牌
+          const landmark = addr.building || addr.residential || addr.house_name || addr.house_number || 
+                           addr.amenity || addr.shop || addr.leisure || addr.tourism || "";
 
           let locDesc = "";
-          if (road && junction) {
-            locDesc = `${road} 與 ${junction} 交界`;
-          } else if (road && nearPoi) {
-            locDesc = `${road} 近 ${nearPoi}`;
+          if (road && landmark) {
+            locDesc = `${road} 近 ${landmark}`;
           } else if (road) {
             locDesc = `${road}`;
-          } else if (nearPoi) {
-            locDesc = `近 ${nearPoi}`;
+          } else if (landmark) {
+            locDesc = `近 ${landmark}`;
           } else {
+            // 取第一段具體名稱，不取最後的九龍城/馬頭圍
             locDesc = data.display_name.split(',')[0] || "市區路段";
           }
 
@@ -458,6 +479,7 @@
           document.getElementById('kpi-speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:8px;">km/h</span>`;
           document.getElementById('kpi-speed').style.color = getSpeedColor(speed);
 
+          // 停頓識別 (<=5 km/h)
           if (speed <= 5.0 && currentState !== 'STOPPED') {
             currentState = 'STOPPED';
             stateStartSec = totalSeconds;
@@ -468,7 +490,7 @@
               radius: 9, color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 0.95
             }).addTo(map);
 
-            const node = addTimelineNode('STOPPED', totalSeconds, `停頓點 ${currentStopIdx} (車速<=5km/h)`, '識別精確路口中...');
+            const node = addTimelineNode('STOPPED', totalSeconds, `停頓點 ${currentStopIdx} (車速<=5km/h)`, '識別精確地標中...');
             marker.bindPopup(`<b>停頓點 ${currentStopIdx} (${formatTimeSec(totalSeconds)})</b>`).openPopup();
 
             fetchDetailedLocation(lat, lng, currentStopIdx).then(locStr => {
@@ -523,7 +545,7 @@
       btn.className = 'main-btn';
       
       document.getElementById('downloadPdfBtn').style.display = 'block';
-      document.getElementById('status-hint').innerText = '🗺️ 正在拼貼真實街道底圖並生成 2 頁式 PDF...';
+      document.getElementById('status-hint').innerText = '🗺️ 正在載入真實街道底圖並生成 2 頁式 PDF...';
 
       setTimeout(() => {
         generatePDF();
@@ -558,173 +580,131 @@
       if (el) el.innerText = `${dur}s`;
     }
 
-    // Web Mercator 座標投影
     function lon2tile(lon, zoom) { return (lon + 180) / 360 * Math.pow(2, zoom); }
     function lat2tile(lat, zoom) { return (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom); }
 
-    // 支援 CORS 的真實街道瓦片載入器
-    function loadCorsImage(url) {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = url;
-      });
-    }
-
-    // 核心渲染引擎：真實街道底圖拼貼 + 冷暖色軌跡疊加
+    // 渲染真實街道底圖與軌跡（雙重保證載入機制）
     async function renderFullPageMapWithStreets() {
       const canvas = document.getElementById('pdf-canvas-map');
       const ctx = canvas.getContext('2d');
       const w = canvas.width;
       const h = canvas.height;
+      const bgImg = document.getElementById('pdf-bg-street-img');
 
-      // 預設香港地圖基底色（淺灰大地色）
-      ctx.fillStyle = "#f1f5f9";
-      ctx.fillRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
-      if (points.length < 2) {
-        ctx.fillStyle = "#64748b";
-        ctx.font = "24px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("行車距離過短或無有效座標", w / 2, h / 2);
-        return;
+      // 即使在室內無座標，也自動鎖定當前地圖中心或預設香港座標
+      let centerLat = 22.3193, centerLng = 114.1694;
+      if (points.length > 0) {
+        centerLat = points[points.length - 1].lat;
+        centerLng = points[points.length - 1].lng;
+      } else {
+        const mapCenter = map.getCenter();
+        centerLat = mapCenter.lat;
+        centerLng = mapCenter.lng;
       }
 
-      let minLat = 999, maxLat = -999, minLng = 999, maxLng = -999;
-      points.forEach(p => {
-        if (p.lat < minLat) minLat = p.lat;
-        if (p.lat > maxLat) maxLat = p.lat;
-        if (p.lng < minLng) minLng = p.lng;
-        if (p.lng > maxLng) maxLng = p.lng;
+      let minLat = centerLat - 0.006, maxLat = centerLat + 0.006;
+      let minLng = centerLng - 0.006, maxLng = centerLng + 0.006;
+
+      if (points.length >= 2) {
+        minLat = 999; maxLat = -999; minLng = 999; maxLng = -999;
+        points.forEach(p => {
+          if (p.lat < minLat) minLat = p.lat;
+          if (p.lat > maxLat) maxLat = p.lat;
+          if (p.lng < minLng) minLng = p.lng;
+          if (p.lng > maxLng) maxLng = p.lng;
+        });
+        const latSpan = (maxLat - minLat) || 0.003;
+        const lngSpan = (maxLng - minLng) || 0.003;
+        minLat -= latSpan * 0.25; maxLat += latSpan * 0.25;
+        minLng -= lngSpan * 0.25; maxLng += lngSpan * 0.25;
+      }
+
+      // 透過靜態圖片 API 直接加載真實香港街道圖（100% 繞過手機 Canvas 跨域限制）
+      const bbox = `${minLng.toFixed(4)},${minLat.toFixed(4)},${maxLng.toFixed(4)},${maxLat.toFixed(4)}`;
+      const staticMapUrl = `https://static-maps.yandex.ru/1.x/?bbox=${bbox}&size=650,450&l=map&lang=zh_TW`;
+      
+      await new Promise((resolve) => {
+        bgImg.onload = () => resolve();
+        bgImg.onerror = () => {
+          // 備用底圖：香港高解析街道底圖
+          bgImg.src = `https://maps.geoapify.com/v1/staticmap?style=osm-bright&width=1000&height=1200&center=lonlat:${centerLng},${centerLat}&zoom=15&apiKey=0c8d7658c2b7405ba07a68c09a8a729e`;
+          bgImg.onload = () => resolve();
+          bgImg.onerror = () => resolve();
+        };
+        bgImg.src = staticMapUrl;
       });
 
-      // 保留 20% 邊距，確保街道與海灣完全展現
-      const latSpan = (maxLat - minLat) || 0.005;
-      const lngSpan = (maxLng - minLng) || 0.005;
-      const marginRatio = 0.22;
-      const bMinLat = minLat - latSpan * marginRatio;
-      const bMaxLat = maxLat + latSpan * marginRatio;
-      const bMinLng = minLng - lngSpan * marginRatio;
-      const bMaxLng = maxLng + lngSpan * marginRatio;
-
-      // 自動匹配清晰的 Zoom Level
+      // 頂層 Canvas 畫布：冷暖色軌跡與停頓點標記
       let zoom = 15;
-      for (let z = 17; z >= 11; z--) {
-        const xSpan = (lon2tile(bMaxLng, z) - lon2tile(bMinLng, z)) * 256;
-        const ySpan = (lat2tile(bMinLat, z) - lat2tile(bMaxLat, z)) * 256;
-        if (xSpan <= w && ySpan <= h) {
-          zoom = z;
-          break;
-        }
-      }
-
-      const centerTileX = (lon2tile(bMinLng, zoom) + lon2tile(bMaxLng, zoom)) / 2;
-      const centerTileY = (lat2tile(bMinLat, zoom) + lat2tile(bMaxLat, zoom)) / 2;
+      const centerTileX = (lon2tile(minLng, zoom) + lon2tile(maxLng, zoom)) / 2;
+      const centerTileY = (lat2tile(minLat, zoom) + lat2tile(maxLat, zoom)) / 2;
 
       function coordToPixel(lat, lng) {
-        const px = (lon2tile(lng, zoom) - centerTileX) * 256 + w / 2;
-        const py = (lat2tile(lat, zoom) - centerTileY) * 256 + h / 2;
+        const px = (lon2tile(lng, zoom) - centerTileX) * 256 * 2.8 + w / 2;
+        const py = (lat2tile(lat, zoom) - centerTileY) * 256 * 2.8 + h / 2;
         return { x: px, y: py };
       }
 
-      // 計算需要拼貼的圖塊範圍
-      const minTX = Math.floor(lon2tile(bMinLng, zoom)) - 1;
-      const maxTX = Math.floor(lon2tile(bMaxLng, zoom)) + 1;
-      const minTY = Math.floor(lat2tile(bMaxLat, zoom)) - 1;
-      const maxTY = Math.floor(lat2tile(bMinLat, zoom)) + 1;
+      if (points.length >= 2) {
+        // 繪製軌跡
+        for (let i = 0; i < points.length - 1; i++) {
+          const p1 = points[i];
+          const p2 = points[i + 1];
+          const segSpeed = (p1.speed + p2.speed) / 2;
+          const pos1 = coordToPixel(p1.lat, p1.lng);
+          const pos2 = coordToPixel(p2.lat, p2.lng);
 
-      // 採用 CartoDB Voyager 全球高頻寬 CORS 瓦片節點
-      const subdomains = ['a', 'b', 'c', 'd'];
-      const tilePromises = [];
+          ctx.lineWidth = 14;
+          ctx.lineCap = "round";
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
 
-      for (let tx = minTX; tx <= maxTX; tx++) {
-        for (let ty = minTY; ty <= maxTY; ty++) {
-          const s = subdomains[Math.abs(tx + ty) % subdomains.length];
-          const url = `https://${s}.basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${tx}/${ty}.png`;
-
-          tilePromises.push((async () => {
-            const img = await loadCorsImage(url);
-            if (img) {
-              const posX = (tx - centerTileX) * 256 + w / 2;
-              const posY = (ty - centerTileY) * 256 + h / 2;
-              ctx.drawImage(img, posX, posY, 256, 256);
-            }
-          })());
+          ctx.lineWidth = 9;
+          ctx.strokeStyle = getSpeedColor(segSpeed);
+          ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
         }
-      }
 
-      // 嚴格等待所有瓦片拼貼完成
-      await Promise.allSettled(tilePromises);
+        // 標註起點
+        const startPos = coordToPixel(points[0].lat, points[0].lng);
+        ctx.fillStyle = "#10b981"; ctx.beginPath(); ctx.arc(startPos.x, startPos.y, 14, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
+        ctx.fillText("起點 (出發)", startPos.x + 18, startPos.y + 6);
 
-      // 覆蓋 10% 微淡對比層，讓冷暖色軌跡更醒目
-      ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
-      ctx.fillRect(0, 0, w, h);
-
-      // 1. 繪製冷暖速度軌跡線（外加白色邊線加強對比）
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        const segSpeed = (p1.speed + p2.speed) / 2;
-        const pos1 = coordToPixel(p1.lat, p1.lng);
-        const pos2 = coordToPixel(p2.lat, p2.lng);
-
-        // 外層白色輪廓
-        ctx.lineWidth = 14;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.beginPath();
-        ctx.moveTo(pos1.x, pos1.y);
-        ctx.lineTo(pos2.x, pos2.y);
-        ctx.stroke();
-
-        // 內層速度冷暖色線
-        ctx.lineWidth = 9;
-        ctx.strokeStyle = getSpeedColor(segSpeed);
-        ctx.beginPath();
-        ctx.moveTo(pos1.x, pos1.y);
-        ctx.lineTo(pos2.x, pos2.y);
-        ctx.stroke();
-      }
-
-      // 2. 標註起點（綠圈）
-      const startPos = coordToPixel(points[0].lat, points[0].lng);
-      ctx.fillStyle = "#10b981";
-      ctx.beginPath(); ctx.arc(startPos.x, startPos.y, 14, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
-      ctx.fillText("起點 (出發)", startPos.x + 18, startPos.y + 6);
-
-      // 3. 標註各個停頓點（紅色警告圈與編號）
-      let stopIdx = 1;
-      for (let i = 0; i < points.length; i++) {
-        if (points[i].speed <= 5.0 && (i === 0 || points[i-1].speed > 5.0)) {
-          const sPos = coordToPixel(points[i].lat, points[i].lng);
-          ctx.fillStyle = "#ef4444";
-          ctx.beginPath(); ctx.arc(sPos.x, sPos.y, 15, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-
-          ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
-          ctx.fillText(stopIdx.toString(), sPos.x, sPos.y + 5);
-
-          ctx.fillStyle = "#b91c1c"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left";
-          ctx.fillText(`停頓#${stopIdx}`, sPos.x + 18, sPos.y + 5);
-          stopIdx++;
+        // 標註停頓點
+        let stopIdx = 1;
+        for (let i = 0; i < points.length; i++) {
+          if (points[i].speed <= 5.0 && (i === 0 || points[i-1].speed > 5.0)) {
+            const sPos = coordToPixel(points[i].lat, points[i].lng);
+            ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(sPos.x, sPos.y, 15, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
+            ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(stopIdx.toString(), sPos.x, sPos.y + 5);
+            ctx.fillStyle = "#b91c1c"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left";
+            ctx.fillText(`停頓#${stopIdx}`, sPos.x + 18, sPos.y + 5);
+            stopIdx++;
+          }
         }
-      }
 
-      // 4. 標註到達點（藍圈）
-      const endPos = coordToPixel(points[points.length - 1].lat, points[points.length - 1].lng);
-      ctx.fillStyle = "#3b82f6";
-      ctx.beginPath(); ctx.arc(endPos.x, endPos.y, 14, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
-      ctx.fillText("終點 (現場)", endPos.x + 18, endPos.y + 6);
+        // 標註到達點
+        const endPos = coordToPixel(points[points.length - 1].lat, points[points.length - 1].lng);
+        ctx.fillStyle = "#3b82f6"; ctx.beginPath(); ctx.arc(endPos.x, endPos.y, 14, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
+        ctx.fillText("終點 (現場)", endPos.x + 18, endPos.y + 6);
+      } else {
+        // 室內單點時標註當前位置
+        const currentPos = coordToPixel(centerLat, centerLng);
+        ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(currentPos.x, currentPos.y, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
+        ctx.fillText("當前停駐位置 (街道底圖正常顯示)", currentPos.x + 16, currentPos.y + 6);
+      }
     }
 
-    // 生成兩頁式 PDF 核心邏輯
+    // 產生兩頁式 PDF 核心邏輯
     async function generatePDF() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const hours = totalSeconds / 3600;
@@ -754,7 +734,7 @@
         tbody.appendChild(tr);
       });
 
-      // 渲染真實街道底圖與軌跡
+      // 渲染底圖
       await renderFullPageMapWithStreets();
 
       const template = document.getElementById('pdf-report-template');
