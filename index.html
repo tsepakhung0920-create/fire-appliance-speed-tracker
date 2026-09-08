@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>消防出勤測速與考核分析</title>
+  <title>消防車出勤與駕駛考核系統</title>
   
-  <!-- 地圖核心 -->
+  <!-- Leaflet 地圖樣式與腳本 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- 高相容性中文字體 PDF 產生庫 -->
+  <!-- 地圖截圖與 PDF 生成套件 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
@@ -21,18 +21,18 @@
       background: #1e293b;
       padding: 8px 10px;
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 6px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
       text-align: center;
       border-bottom: 2px solid #334155;
       z-index: 1000;
       flex-shrink: 0;
     }
     .kpi-title { font-size: 10px; color: #94a3b8; margin-bottom: 2px; }
-    .kpi-value { font-size: 15px; font-weight: bold; }
-    .kpi-speed { font-size: 18px; color: #38bdf8; }
+    .kpi-value { font-size: 14px; font-weight: bold; }
+    .kpi-speed { font-size: 17px; color: #38bdf8; }
 
-    /* 操作按鈕區 */
+    /* 操作按鈕區 (頂部常駐) */
     #action-container {
       background: #0f172a;
       padding: 8px 12px;
@@ -61,8 +61,8 @@
     #downloadPdfBtn {
       display: none;
       width: 100%;
-      padding: 10px;
-      font-size: 14px;
+      padding: 9px;
+      font-size: 13px;
       font-weight: bold;
       background: #0284c7;
       border: 1px solid #38bdf8;
@@ -71,10 +71,10 @@
       text-align: center;
       cursor: pointer;
     }
-    #status-hint { font-size: 11px; text-align: center; color: #38bdf8; }
+    #status-hint { font-size: 11px; text-align: center; color: #38bdf8; min-height: 14px; }
 
     /* 中間地圖 */
-    #map-container { height: 32vh; width: 100%; position: relative; flex-shrink: 0; }
+    #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
     /* 下方時間軸面板 */
@@ -85,7 +85,7 @@
       padding: 10px 12px 20px 12px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
     .section-title {
       font-size: 12px;
@@ -111,44 +111,65 @@
     .time-badge { font-family: monospace; font-weight: bold; background: #334155; padding: 2px 5px; border-radius: 4px; }
     .loc-text { color: #cbd5e1; font-size: 12px; margin-top: 2px; }
 
-    /* 隱藏專用：用來渲染成 A4 PDF 的整潔報告樣式 */
+    /* ================= A4 PDF 專用渲染模板 (高畫質列印) ================= */
     #pdf-report-template {
       display: none;
+      width: 794px; /* A4 寬度標稱像素 */
       background: #ffffff;
       color: #111827;
       padding: 24px;
-      font-family: sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "PingFang TC", sans-serif;
     }
-    .pdf-header { border-bottom: 2px solid #b91c1c; padding-bottom: 10px; margin-bottom: 16px; }
-    .pdf-title { font-size: 20px; font-weight: bold; color: #b91c1c; }
-    .pdf-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
-    .pdf-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
-    .pdf-kpi-box { background: #f3f4f6; border-radius: 6px; padding: 10px; text-align: center; }
-    .pdf-kpi-label { font-size: 11px; color: #4b5563; }
-    .pdf-kpi-num { font-size: 16px; font-weight: bold; color: #111827; margin-top: 2px; }
-    .pdf-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
-    .pdf-table th { background: #f3f4f6; color: #374151; padding: 8px; border: 1px solid #e5e7eb; text-align: left; }
-    .pdf-table td { padding: 8px; border: 1px solid #e5e7eb; }
+    .pdf-header { border-bottom: 2px solid #dc2626; padding-bottom: 8px; margin-bottom: 12px; }
+    .pdf-title { font-size: 22px; font-weight: bold; color: #dc2626; }
+    .pdf-time-row { font-size: 12px; color: #374151; font-weight: 600; margin-top: 4px; }
+
+    .pdf-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px; }
+    .pdf-kpi-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 6px; text-align: center; }
+    .pdf-kpi-label { font-size: 10px; color: #64748b; }
+    .pdf-kpi-num { font-size: 15px; font-weight: bold; color: #0f172a; margin-top: 2px; }
+
+    .pdf-section-title { font-size: 13px; font-weight: bold; color: #0f172a; margin: 10px 0 6px 0; border-left: 4px solid #dc2626; padding-left: 6px; }
+
+    /* PDF 內的事件表格 */
+    .pdf-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 14px; }
+    .pdf-table th { background: #f1f5f9; color: #334155; padding: 6px; border: 1px solid #cbd5e1; text-align: left; }
+    .pdf-table td { padding: 5px 6px; border: 1px solid #cbd5e1; }
+
+    /* PDF 內的大地圖容器 (保證不小於半張 A4 紙) */
+    #pdf-map-print-box {
+      width: 100%;
+      height: 480px; /* 超過半張 A4 高度 */
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    #pdf-map-print-img { width: 100%; height: 100%; object-fit: cover; }
   </style>
 </head>
 <body>
 
-  <!-- 頂部即時核心儀表 -->
+  <!-- 頂部即時核心儀表 (5 個重點數據) -->
   <div id="top-bar">
     <div>
       <div class="kpi-title">即時時速</div>
-      <div id="kpi-speed" class="kpi-value kpi-speed">0.0 <span style="font-size:10px;">km/h</span></div>
+      <div id="kpi-speed" class="kpi-value kpi-speed">0.0 <span style="font-size:9px;">km/h</span></div>
     </div>
     <div>
-      <div class="kpi-title">累積距離</div>
-      <div id="kpi-dist" class="kpi-value">0.00 <span style="font-size:10px;">km</span></div>
+      <div class="kpi-title">行駛里程</div>
+      <div id="kpi-dist" class="kpi-value">0.00 <span style="font-size:9px;">km</span></div>
     </div>
     <div>
-      <div class="kpi-title">累積耗時</div>
+      <div class="kpi-title">平均車速</div>
+      <div id="kpi-avg-speed" class="kpi-value">0.0 <span style="font-size:9px;">km/h</span></div>
+    </div>
+    <div>
+      <div class="kpi-title">總耗時</div>
       <div id="kpi-total-time" class="kpi-value">00:00</div>
     </div>
     <div>
-      <div class="kpi-title">受阻秒數</div>
+      <div class="kpi-title">受阻停滯</div>
       <div id="kpi-stop-time" class="kpi-value" style="color:#ef4444;">0s</div>
     </div>
   </div>
@@ -160,7 +181,7 @@
     <button id="downloadPdfBtn" onclick="generatePDF()">📄 重新下載 PDF 考核報告</button>
   </div>
 
-  <!-- 地圖 -->
+  <!-- 中間即時地圖 -->
   <div id="map-container">
     <div id="map"></div>
   </div>
@@ -168,58 +189,77 @@
   <!-- 下方時間軸面板 -->
   <div id="stream-panel">
     <div>
-      <div class="section-title">行車事件時間軸 (起步 - 停滯 - 重新開車)</div>
+      <div class="section-title">行車事件時間軸 (起步 - 停滯路段/交界 - 繼續行駛)</div>
       <div id="timeline-box" class="timeline-list">
-        <div style="color: #64748b; font-size: 11px;" id="empty-hint">按開始後，系統將自動記錄行車時間軸...</div>
+        <div style="color: #64748b; font-size: 11px;" id="empty-hint">按開始後，系統將自動記錄詳細路口與停滯點...</div>
       </div>
     </div>
   </div>
 
-  <!-- 隱藏的 PDF 渲染容器 (供 html2pdf 轉換為標準 A4 繁體中文文件) -->
+  <!-- 隱藏的 PDF 渲染容器 (供 html2pdf 轉換為標準 A4 報告) -->
   <div id="pdf-report-template">
     <div class="pdf-header">
-      <div class="pdf-title">消防車輛駕駛出勤 / 考核記錄報告</div>
-      <div class="pdf-sub" id="pdf-meta">出勤時間：-</div>
+      <div class="pdf-title">消防車輛駕駛出勤 / 考試分析報告</div>
+      <div class="pdf-time-row" id="pdf-times-summary">
+        出勤起步時間：- ｜ 到達目的地時間：-
+      </div>
     </div>
 
+    <!-- 核心數據卡片 -->
     <div class="pdf-kpi-grid">
       <div class="pdf-kpi-box">
         <div class="pdf-kpi-label">總耗時</div>
         <div class="pdf-kpi-num" id="pdf-time">00:00</div>
       </div>
       <div class="pdf-kpi-box">
-        <div class="pdf-kpi-label">總行駛里程</div>
+        <div class="pdf-kpi-label">總行駛距離</div>
         <div class="pdf-kpi-num" id="pdf-dist">0.00 km</div>
       </div>
       <div class="pdf-kpi-box">
-        <div class="pdf-kpi-label">最高時速</div>
+        <div class="pdf-kpi-label">平均車速</div>
+        <div class="pdf-kpi-num" id="pdf-avg">0.0 km/h</div>
+      </div>
+      <div class="pdf-kpi-box">
+        <div class="pdf-kpi-label">最高車速</div>
         <div class="pdf-kpi-num" id="pdf-max">0.0 km/h</div>
       </div>
       <div class="pdf-kpi-box">
-        <div class="pdf-kpi-label">受阻停滯 (&le;5km/h)</div>
-        <div class="pdf-kpi-num" id="pdf-stop" style="color:#b91c1c;">0 秒 (0%)</div>
+        <div class="pdf-kpi-label">受阻停頓 (&le;5km/h)</div>
+        <div class="pdf-kpi-num" id="pdf-stop" style="color:#b91c1c;">0 秒</div>
       </div>
     </div>
 
-    <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: #111827;">行車時間軸詳細清單</div>
+    <!-- 事件時間軸 -->
+    <div class="pdf-section-title">行車記錄與停頓位置詳細說明</div>
     <table class="pdf-table">
       <thead>
         <tr>
-          <th style="width: 15%;">累積時間</th>
-          <th style="width: 35%;">行車狀態</th>
-          <th style="width: 15%;">持續時長</th>
-          <th style="width: 35%;">位置 / 街道名稱</th>
+          <th style="width: 14%;">累積時間</th>
+          <th style="width: 32%;">事件 / 狀態</th>
+          <th style="width: 14%;">持續時長</th>
+          <th style="width: 40%;">精確路段 / 交界 / 地標位置</th>
         </tr>
       </thead>
       <tbody id="pdf-timeline-rows">
-        <!-- 自動填充 -->
+        <!-- JS 動態生成 -->
       </tbody>
     </table>
+
+    <!-- 大地圖區域：大小不少於半張 A4 -->
+    <div class="pdf-section-title">全行程行車速度軌跡地圖 (紅:最慢/停滯, 藍:最高速)</div>
+    <div id="pdf-map-print-box">
+      <canvas id="map-snapshot-canvas" style="display:none;"></canvas>
+      <img id="pdf-map-print-img" alt="行車軌跡大地圖" />
+    </div>
   </div>
 
   <script>
+    // 使用支援跨域取圖的地圖底圖（確保可截圖放入 PDF）
     let map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      crossOrigin: true
+    }).addTo(map);
 
     let isTracking = false;
     let watchId = null;
@@ -230,11 +270,14 @@
     let maxSpeed = 0;
     let totalSeconds = 0;
     let stoppedTotalSeconds = 0;
-    let startTimeFormatted = "";
+
+    let startTimeObj = null;
+    let endTimeObj = null;
 
     let currentState = 'IDLE'; 
     let stateStartSec = 0;
     let timelineEvents = [];
+    let stopPointCounter = 0; // 停頓點累計計數器
 
     function getSpeedColor(speed) {
       if (speed <= 5.0) return '#ef4444'; 
@@ -250,6 +293,11 @@
       return `${m}:${s}`;
     }
 
+    function formatClockTime(date) {
+      if (!date) return "-";
+      return `${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}:${date.getSeconds().toString().padStart(2,'0')}`;
+    }
+
     function calcDistance(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
       const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -260,16 +308,38 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    async function fetchStreetName(lat, lon) {
+    // 核心升級：精準位置描述（提取路名、交界、屋苑或商場）
+    async function fetchDetailedLocation(lat, lon, stopIndex = null) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh-TW,zh-HK`;
         const res = await fetch(url);
         const data = await res.json();
         if (data && data.address) {
-          return data.address.road || data.address.pedestrian || data.address.suburb || "未知路段";
+          const road = data.address.road || data.address.pedestrian || "";
+          const nearPoi = data.address.residential || data.address.building || data.address.commercial || data.address.suburb || "";
+          const junction = data.address.junction || "";
+
+          let locDesc = "";
+          if (road && junction) {
+            locDesc = `${road} 與 ${junction} 交界`;
+          } else if (road && nearPoi) {
+            locDesc = `${road} 近 ${nearPoi}`;
+          } else if (road) {
+            locDesc = `${road}`;
+          } else if (nearPoi) {
+            locDesc = `近 ${nearPoi}`;
+          } else {
+            locDesc = data.display_name.split(',')[0] || "市區路段";
+          }
+
+          if (stopIndex !== null) {
+            return `停頓點 ${stopIndex} (${locDesc})`;
+          }
+          return locDesc;
         }
       } catch (e) {}
-      return "未知路口";
+
+      return stopIndex !== null ? `停頓點 ${stopIndex} (坐標: ${lat.toFixed(4)}, ${lon.toFixed(4)})` : "出發路段";
     }
 
     function toggleTracking() {
@@ -289,9 +359,11 @@
       totalSeconds = 0;
       stoppedTotalSeconds = 0;
       timelineEvents = [];
+      stopPointCounter = 0;
       currentState = 'RUNNING';
       stateStartSec = 0;
-      startTimeFormatted = new Date().toLocaleString('zh-HK');
+      startTimeObj = new Date();
+      endTimeObj = null;
 
       document.getElementById('timeline-box').innerHTML = '';
       document.getElementById('status-hint').innerText = '';
@@ -301,10 +373,10 @@
 
       isTracking = true;
       const btn = document.getElementById('actionBtn');
-      btn.innerText = '結束出勤並匯出 PDF';
+      btn.innerText = '到達現場 / 結束出勤 (STOP)';
       btn.className = 'main-btn active';
 
-      addTimelineNode('RUNNING', 0, '起步開車', '出發點');
+      addTimelineNode('RUNNING', 0, '起步出勤 (正常開車)', '出發點');
 
       let latestSpeed = 0;
       secondTimer = setInterval(() => {
@@ -315,6 +387,13 @@
           stoppedTotalSeconds++;
           document.getElementById('kpi-stop-time').innerText = stoppedTotalSeconds + 's';
         }
+
+        // 即時計算平均速度
+        const distKm = totalDistanceMeters / 1000;
+        const hours = totalSeconds / 3600;
+        const avgSpeed = hours > 0 ? (distKm / hours).toFixed(1) : "0.0";
+        document.getElementById('kpi-avg-speed').innerHTML = `${avgSpeed} <span style="font-size:9px;">km/h</span>`;
+
         updateCurrentNodeDuration(totalSeconds - stateStartSec);
       }, 1000);
 
@@ -335,44 +414,48 @@
           latestSpeed = speed;
           if (speed > maxSpeed) maxSpeed = speed;
 
-          document.getElementById('kpi-speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:10px;">km/h</span>`;
+          document.getElementById('kpi-speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:9px;">km/h</span>`;
           document.getElementById('kpi-speed').style.color = getSpeedColor(speed);
 
+          // 停頓判斷 (時速 <= 5 km/h)
           if (speed <= 5.0 && currentState !== 'STOPPED') {
             currentState = 'STOPPED';
             stateStartSec = totalSeconds;
-            
+            stopPointCounter++;
+
+            const currentStopIdx = stopPointCounter;
             const marker = L.circleMarker([lat, lng], {
-              radius: 8, color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 0.95
+              radius: 9, color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 0.95
             }).addTo(map);
 
-            const node = addTimelineNode('STOPPED', totalSeconds, '車輛受阻停下 (<=5km/h)', '獲取街名中...');
-            marker.bindPopup(`<b>停滯點 (${formatTimeSec(totalSeconds)})</b>`).openPopup();
+            const node = addTimelineNode('STOPPED', totalSeconds, `停頓點 ${currentStopIdx} (車速<=5km/h)`, '正在識別精確路口...');
+            marker.bindPopup(`<b>停頓點 ${currentStopIdx} (${formatTimeSec(totalSeconds)})</b>`).openPopup();
 
-            fetchStreetName(lat, lng).then(st => {
-              node.street = st;
+            fetchDetailedLocation(lat, lng, currentStopIdx).then(locStr => {
+              node.street = locStr;
               const el = document.getElementById(`node-loc-${node.id}`);
-              if (el) el.innerText = st;
-              marker.setPopupContent(`<b>停滯點 (${formatTimeSec(node.startSec)})</b><br>${st}`);
+              if (el) el.innerText = locStr;
+              marker.setPopupContent(`<b>${locStr}</b><br>發生於: ${formatTimeSec(node.startSec)}`);
             });
 
           } else if (speed > 5.0 && currentState !== 'RUNNING') {
             currentState = 'RUNNING';
             stateStartSec = totalSeconds;
 
-            const node = addTimelineNode('RUNNING', totalSeconds, '繼續開車 (恢復速度)', '獲取街名中...');
-            fetchStreetName(lat, lng).then(st => {
-              node.street = st;
+            const node = addTimelineNode('RUNNING', totalSeconds, '重新起步 (恢復正常車速)', '正在獲取路段...');
+            fetchDetailedLocation(lat, lng).then(locStr => {
+              node.street = locStr;
               const el = document.getElementById(`node-loc-${node.id}`);
-              if (el) el.innerText = st;
+              if (el) el.innerText = locStr;
             });
           }
 
+          // 軌跡繪製
           if (points.length > 0) {
             const last = points[points.length - 1];
             const segDist = calcDistance(last.lat, last.lng, lat, lng);
             totalDistanceMeters += segDist;
-            document.getElementById('kpi-dist').innerHTML = `${(totalDistanceMeters / 1000).toFixed(2)} <span style="font-size:10px;">km</span>`;
+            document.getElementById('kpi-dist').innerHTML = `${(totalDistanceMeters / 1000).toFixed(2)} <span style="font-size:9px;">km</span>`;
 
             L.polyline([[last.lat, last.lng], [lat, lng]], {
               color: getSpeedColor((last.speed + speed) / 2),
@@ -394,17 +477,25 @@
       if (watchId) navigator.geolocation.clearWatch(watchId);
       if (secondTimer) clearInterval(secondTimer);
 
+      endTimeObj = new Date();
+
       const btn = document.getElementById('actionBtn');
       btn.innerText = '出勤開始 (START)';
       btn.className = 'main-btn';
       
       document.getElementById('downloadPdfBtn').style.display = 'block';
-      document.getElementById('status-hint').innerText = '📄 正在產生高畫質 PDF 報告...';
+      document.getElementById('status-hint').innerText = '🗺️ 正在截取大地圖並匯出 PDF 考核報告...';
 
-      // 立即生成 PDF
+      // 自適應地圖視野，將全部軌跡置中
+      if (points.length > 1) {
+        const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+        map.fitBounds(bounds, { padding: [30, 30] });
+      }
+
+      // 留出 1 秒讓地圖完成縮放與瓦片加載，隨後直接產生 PDF
       setTimeout(() => {
         generatePDF();
-      }, 500);
+      }, 1200);
     }
 
     function addTimelineNode(type, sec, title, street) {
@@ -435,18 +526,42 @@
       if (el) el.innerText = `${dur}s`;
     }
 
-    // 將資料填入隱藏模板並導出 PDF
-    function generatePDF() {
+    // 將地圖 HTML 轉成圖片放進 PDF
+    async function captureMapToImage() {
+      try {
+        const mapElement = document.getElementById('map');
+        const canvas = await html2canvas(mapElement, {
+          useCORS: true,
+          allowTaint: false,
+          logging: false
+        });
+        return canvas.toDataURL('image/jpeg', 0.95);
+      } catch (err) {
+        console.error("地圖截圖失敗:", err);
+        return null;
+      }
+    }
+
+    // 生成 PDF 報告核心邏輯
+    async function generatePDF() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
+      const hours = totalSeconds / 3600;
+      const avgSpeed = hours > 0 ? (distKm / hours).toFixed(1) : "0.0";
       const stoppedPercent = totalSeconds > 0 ? ((stoppedTotalSeconds / totalSeconds) * 100).toFixed(1) + "%" : "0%";
 
-      // 填寫 PDF 模板內容
-      document.getElementById('pdf-meta').innerText = `出勤記錄時間：${startTimeFormatted} ｜ 產生時間：${new Date().toLocaleString('zh-HK')}`;
+      // 1. 填寫起步與到達時間（無生成時間）
+      const startStr = startTimeObj ? `${startTimeObj.toLocaleDateString('zh-HK')} ${formatClockTime(startTimeObj)}` : "-";
+      const endStr = endTimeObj ? formatClockTime(endTimeObj) : "-";
+      document.getElementById('pdf-times-summary').innerText = `出勤起步時間：${startStr} ｜ 到達目的地時間：${endStr}`;
+
+      // 2. 填寫關鍵數據
       document.getElementById('pdf-time').innerText = formatTimeSec(totalSeconds);
       document.getElementById('pdf-dist').innerText = `${distKm} km`;
+      document.getElementById('pdf-avg').innerText = `${avgSpeed} km/h`;
       document.getElementById('pdf-max').innerText = `${maxSpeed.toFixed(1)} km/h`;
       document.getElementById('pdf-stop').innerText = `${stoppedTotalSeconds} 秒 (${stoppedPercent})`;
 
+      // 3. 填充事件時間軸表格
       const tbody = document.getElementById('pdf-timeline-rows');
       tbody.innerHTML = '';
       timelineEvents.forEach(e => {
@@ -460,21 +575,27 @@
         tbody.appendChild(tr);
       });
 
-      // 暫時顯示模板進行截圖轉化
-      const element = document.getElementById('pdf-report-template');
-      element.style.display = 'block';
+      // 4. 截取地圖軌跡並注入半頁大容器
+      const mapImgData = await captureMapToImage();
+      if (mapImgData) {
+        document.getElementById('pdf-map-print-img').src = mapImgData;
+      }
+
+      // 5. 執行標準 A4 轉化
+      const template = document.getElementById('pdf-report-template');
+      template.style.display = 'block';
 
       const opt = {
-        margin:       [10, 10, 10, 10],
+        margin:       [8, 8, 8, 8],
         filename:     `消防出勤考核報告_${new Date().toISOString().slice(0,10)}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
 
-      html2pdf().set(opt).from(element).save().then(() => {
-        element.style.display = 'none'; // 隱藏回模板
-        document.getElementById('status-hint').innerText = '✅ PDF 考核報告已成功下載！';
+      html2pdf().set(opt).from(template).save().then(() => {
+        template.style.display = 'none';
+        document.getElementById('status-hint').innerText = '✅ PDF 報告已自動生成並下載完成！';
       });
     }
   </script>
