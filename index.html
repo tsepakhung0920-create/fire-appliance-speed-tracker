@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>消防出勤測速與路況分析</title>
+  <title>消防出勤測速與考試記錄</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; height: 100dvh; background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
+    html, body { height: 100%; background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* 頂部即時核心儀表 */
+    /* 1. 頂部即時核心儀表 */
     #top-bar {
       background: #1e293b;
       padding: 8px 10px;
@@ -25,19 +25,60 @@
       flex-shrink: 0;
     }
     .kpi-title { font-size: 10px; color: #94a3b8; margin-bottom: 2px; }
-    .kpi-value { font-size: 16px; font-weight: bold; }
-    .kpi-speed { font-size: 20px; color: #38bdf8; }
+    .kpi-value { font-size: 15px; font-weight: bold; }
+    .kpi-speed { font-size: 18px; color: #38bdf8; }
 
-    /* 中間區域：地圖適度縮小，留空間給下方直流面板 */
-    #map-container { height: 32vh; width: 100%; position: relative; flex-shrink: 0; }
+    /* 2. 操作按鈕區：放在頂部核心位置，絕不會被遮擋 */
+    #action-container {
+      background: #0f172a;
+      padding: 8px 12px;
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid #334155;
+      z-index: 1000;
+      flex-shrink: 0;
+    }
+    .main-btn {
+      flex: 1;
+      padding: 14px 10px;
+      font-size: 18px;
+      font-weight: 800;
+      border: 2px solid #34d399;
+      border-radius: 8px;
+      color: white;
+      background: #059669;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(5, 150, 105, 0.4);
+    }
+    .main-btn.active {
+      background: #dc2626;
+      border-color: #f87171;
+      box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4);
+    }
+    #downloadBtn {
+      display: none; /* 結束後顯示 */
+      flex: 0.7;
+      padding: 14px 10px;
+      font-size: 15px;
+      font-weight: bold;
+      border: 2px solid #38bdf8;
+      border-radius: 8px;
+      background: #0284c7;
+      color: white;
+      cursor: pointer;
+    }
+
+    /* 3. 中間地圖 */
+    #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
-    /* 直流分段數據面板 */
+    /* 4. 下方直流分段數據面板 */
     #stream-panel {
       flex: 1;
       background: #1e293b;
       overflow-y: auto;
-      padding: 10px 12px 90px 12px; /* 底部預留空間給固定按鈕 */
+      padding: 10px 12px 20px 12px;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -73,58 +114,22 @@
     }
     .stop-item-title { font-weight: bold; color: #f8fafc; font-size: 12px; }
     .stop-item-time { color: #94a3b8; font-size: 10px; margin-top: 2px; }
-
-    /* 底部操作控制（固定置底） */
-    #control-bar {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      padding: 12px 16px env(safe-area-inset-bottom, 12px);
-      background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(8px);
-      z-index: 2000;
-      border-top: 1px solid #334155;
-      display: flex;
-      gap: 10px;
-    }
-    #actionBtn {
-      flex: 1;
-      padding: 14px;
-      font-size: 17px;
-      font-weight: bold;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      background: #10b981;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-    }
-    #actionBtn.active {
-      background: #ef4444;
-      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-    }
-    #upload-status {
-      font-size: 11px;
-      color: #94a3b8;
-      text-align: center;
-      margin-top: 4px;
-    }
   </style>
 </head>
 <body>
 
-  <!-- 頂部即時核心儀表 -->
+  <!-- 1. 頂部儀表 -->
   <div id="top-bar">
     <div>
       <div class="kpi-title">即時時速</div>
       <div id="kpi-speed" class="kpi-value kpi-speed">0.0 <span style="font-size:10px;">km/h</span></div>
     </div>
     <div>
-      <div class="kpi-title">出勤總距離</div>
+      <div class="kpi-title">總距離</div>
       <div id="kpi-dist" class="kpi-value">0.00 <span style="font-size:10px;">km</span></div>
     </div>
     <div>
-      <div class="kpi-title">出勤總時長</div>
+      <div class="kpi-title">總時長</div>
       <div id="kpi-total-time" class="kpi-value">00:00</div>
     </div>
     <div>
@@ -133,12 +138,18 @@
     </div>
   </div>
 
-  <!-- 地圖 -->
+  <!-- 2. 開始 / 結束大按鈕 (保證直接看見) -->
+  <div id="action-container">
+    <button id="actionBtn" class="main-btn" onclick="toggleTracking()">出勤開始 (START)</button>
+    <button id="downloadBtn" onclick="exportToExcel()">下載 Excel</button>
+  </div>
+
+  <!-- 3. 地圖區域 -->
   <div id="map-container">
     <div id="map"></div>
   </div>
 
-  <!-- 下方直流數據面板 -->
+  <!-- 4. 下方直流數據面板 -->
   <div id="stream-panel">
     
     <!-- 各速度區間時間統計 -->
@@ -192,18 +203,7 @@
 
   </div>
 
-  <!-- 底部固定按鈕 -->
-  <div id="control-bar">
-    <div style="width:100%;">
-      <button id="actionBtn" onclick="toggleTracking()">出勤開始</button>
-      <div id="upload-status"></div>
-    </div>
-  </div>
-
   <script>
-    // === 填入你的 Google Apps Script Web App 網址 ===
-    const GOOGLE_SCRIPT_URL = "在此貼上你的Google_Apps_Script_URL";
-
     let map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
@@ -215,6 +215,7 @@
     let totalDistanceMeters = 0;
     let maxSpeed = 0;
     let totalSeconds = 0;
+    let startTimeFormatted = "";
 
     let speedBuckets = { stop: 0, slow: 0, med: 0, fast: 0, vfast: 0 };
     let currentStopEvent = null; 
@@ -278,14 +279,17 @@
       currentStopEvent = null;
       allStopEvents = [];
       speedBuckets = { stop: 0, slow: 0, med: 0, fast: 0, vfast: 0 };
+      startTimeFormatted = new Date().toLocaleString('zh-HK');
+
       document.getElementById('stop-list').innerHTML = '';
-      document.getElementById('upload-status').innerText = '';
+      document.getElementById('downloadBtn').style.display = 'none';
 
       if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
 
       isTracking = true;
-      document.getElementById('actionBtn').innerText = '結束出勤並上傳 Google Drive';
-      document.getElementById('actionBtn').className = 'active';
+      const btn = document.getElementById('actionBtn');
+      btn.innerText = '結束出勤 (STOP)';
+      btn.className = 'main-btn active';
 
       let latestSpeed = 0;
       secondTimer = setInterval(() => {
@@ -398,42 +402,44 @@
       if (watchId) navigator.geolocation.clearWatch(watchId);
       if (secondTimer) clearInterval(secondTimer);
 
-      document.getElementById('actionBtn').innerText = '出勤開始';
-      document.getElementById('actionBtn').className = '';
+      const btn = document.getElementById('actionBtn');
+      btn.innerText = '出勤開始 (START)';
+      btn.className = 'main-btn';
+      document.getElementById('downloadBtn').style.display = 'block'; // 顯示下載按鈕
       currentStopEvent = null;
 
-      // 準備上傳數據
+      // 自動觸發下載 Excel
+      exportToExcel();
+    }
+
+    function exportToExcel() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const totalTimeStr = formatTime(totalSeconds);
       const stoppedPercent = totalSeconds > 0 ? ((speedBuckets.stop / totalSeconds) * 100).toFixed(1) + "%" : "0%";
-      const stopDetailsStr = allStopEvents.map(e => `${e.streetName}(${e.duration}秒)`).join("； ");
+      const stopDetailsStr = allStopEvents.map(e => `${e.streetName}(${e.duration}秒)`).join("； ") || "無受阻記錄";
 
-      const payload = {
-        timestamp: new Date().toLocaleString('zh-HK'),
-        duration: totalTimeStr,
-        distance: distKm,
-        maxSpeed: maxSpeed.toFixed(1),
-        stoppedSeconds: speedBuckets.stop,
-        stoppedPercent: stoppedPercent,
-        stopDetails: stopDetailsStr || "無"
-      };
+      const headers = ["出勤日期時間", "出勤總時長", "總里程(km)", "最高時速(km/h)", "受阻總秒數(<=5km/h)", "受阻時間佔比", "受阻街道詳細記錄"];
+      const row = [
+        `"${startTimeFormatted}"`,
+        `"${totalTimeStr}"`,
+        `"${distKm}"`,
+        `"${maxSpeed.toFixed(1)}"`,
+        `"${speedBuckets.stop} 秒"`,
+        `"${stoppedPercent}"`,
+        `"${stopDetailsStr}"`
+      ];
 
-      // 自動同步到 Google 雲端試算表
-      if (GOOGLE_SCRIPT_URL && GOOGLE_SCRIPT_URL.startsWith("http")) {
-        document.getElementById('upload-status').innerText = '☁️ 正在上傳至 Google Drive 試算表...';
-        fetch(GOOGLE_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        }).then(() => {
-          document.getElementById('upload-status').innerHTML = '✅ <b style="color:#10b981;">已成功同步至 Google Drive 試算表！</b>';
-        }).catch(err => {
-          document.getElementById('upload-status').innerHTML = '❌ 上傳失敗，請檢查網絡';
-        });
-      } else {
-        alert(`【出勤完成】\n總時間: ${totalTimeStr}\n總里程: ${distKm}km\n受阻街名: ${stopDetailsStr || '無'}\n\n(提示: 設定 Google Script URL 即可自動存入 Drive 試算表)`);
-      }
+      const csvContent = "\uFEFF" + headers.join(",") + "\n" + row.join(",");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement("a");
+      const dateTag = new Date().toISOString().slice(0,10);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `消防出勤記錄_${dateTag}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
 
     function updateBucketUI() {
