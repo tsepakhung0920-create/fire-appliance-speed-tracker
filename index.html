@@ -3,16 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>消防出勤測速與考試記錄</title>
+  <title>消防出勤測速與考核分析</title>
   
+  <!-- 地圖核心 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- 高相容性中文字體 PDF 產生庫 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* 1. 頂部即時核心儀表 */
+    /* 頂部即時核心儀表 */
     #top-bar {
       background: #1e293b;
       padding: 8px 10px;
@@ -28,52 +32,52 @@
     .kpi-value { font-size: 15px; font-weight: bold; }
     .kpi-speed { font-size: 18px; color: #38bdf8; }
 
-    /* 2. 操作按鈕區：放在頂部核心位置，絕不會被遮擋 */
+    /* 操作按鈕區 */
     #action-container {
       background: #0f172a;
       padding: 8px 12px;
       display: flex;
-      gap: 8px;
+      flex-direction: column;
+      gap: 6px;
       border-bottom: 1px solid #334155;
       z-index: 1000;
       flex-shrink: 0;
     }
     .main-btn {
-      flex: 1;
-      padding: 14px 10px;
-      font-size: 18px;
+      width: 100%;
+      padding: 13px 10px;
+      font-size: 17px;
       font-weight: 800;
       border: 2px solid #34d399;
       border-radius: 8px;
       color: white;
       background: #059669;
-      text-align: center;
       cursor: pointer;
-      box-shadow: 0 4px 14px rgba(5, 150, 105, 0.4);
     }
     .main-btn.active {
       background: #dc2626;
       border-color: #f87171;
-      box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4);
     }
-    #downloadBtn {
-      display: none; /* 結束後顯示 */
-      flex: 0.7;
-      padding: 14px 10px;
-      font-size: 15px;
+    #downloadPdfBtn {
+      display: none;
+      width: 100%;
+      padding: 10px;
+      font-size: 14px;
       font-weight: bold;
-      border: 2px solid #38bdf8;
-      border-radius: 8px;
       background: #0284c7;
-      color: white;
+      border: 1px solid #38bdf8;
+      color: #fff;
+      border-radius: 6px;
+      text-align: center;
       cursor: pointer;
     }
+    #status-hint { font-size: 11px; text-align: center; color: #38bdf8; }
 
-    /* 3. 中間地圖 */
-    #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
+    /* 中間地圖 */
+    #map-container { height: 32vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
-    /* 4. 下方直流分段數據面板 */
+    /* 下方時間軸面板 */
     #stream-panel {
       flex: 1;
       background: #1e293b;
@@ -81,126 +85,136 @@
       padding: 10px 12px 20px 12px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
-
     .section-title {
       font-size: 12px;
       color: #cbd5e1;
       font-weight: 600;
       border-left: 3px solid #38bdf8;
       padding-left: 6px;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
-
-    /* 各速度區間行車時間表格 */
-    .speed-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    .speed-table th { color: #64748b; text-align: left; padding: 4px 6px; font-weight: normal; }
-    .speed-table td { padding: 4px 6px; border-top: 1px solid #334155; }
-    .badge { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
-
-    /* 停滯地點清單 */
-    #stop-list { display: flex; flex-direction: column; gap: 6px; }
-    .stop-item {
+    .timeline-list { display: flex; flex-direction: column; gap: 6px; }
+    .timeline-card {
       background: #0f172a;
-      border-left: 4px solid #ef4444;
       padding: 8px 10px;
-      border-radius: 4px;
+      border-radius: 6px;
       font-size: 12px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      cursor: pointer;
+      justify-content: space-between;
+      border-left: 4px solid #64748b;
     }
-    .stop-item-title { font-weight: bold; color: #f8fafc; font-size: 12px; }
-    .stop-item-time { color: #94a3b8; font-size: 10px; margin-top: 2px; }
+    .timeline-card.stop { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.08); }
+    .timeline-card.run { border-left-color: #10b981; background: rgba(16, 185, 129, 0.08); }
+    .time-badge { font-family: monospace; font-weight: bold; background: #334155; padding: 2px 5px; border-radius: 4px; }
+    .loc-text { color: #cbd5e1; font-size: 12px; margin-top: 2px; }
+
+    /* 隱藏專用：用來渲染成 A4 PDF 的整潔報告樣式 */
+    #pdf-report-template {
+      display: none;
+      background: #ffffff;
+      color: #111827;
+      padding: 24px;
+      font-family: sans-serif;
+    }
+    .pdf-header { border-bottom: 2px solid #b91c1c; padding-bottom: 10px; margin-bottom: 16px; }
+    .pdf-title { font-size: 20px; font-weight: bold; color: #b91c1c; }
+    .pdf-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
+    .pdf-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .pdf-kpi-box { background: #f3f4f6; border-radius: 6px; padding: 10px; text-align: center; }
+    .pdf-kpi-label { font-size: 11px; color: #4b5563; }
+    .pdf-kpi-num { font-size: 16px; font-weight: bold; color: #111827; margin-top: 2px; }
+    .pdf-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+    .pdf-table th { background: #f3f4f6; color: #374151; padding: 8px; border: 1px solid #e5e7eb; text-align: left; }
+    .pdf-table td { padding: 8px; border: 1px solid #e5e7eb; }
   </style>
 </head>
 <body>
 
-  <!-- 1. 頂部儀表 -->
+  <!-- 頂部即時核心儀表 -->
   <div id="top-bar">
     <div>
       <div class="kpi-title">即時時速</div>
       <div id="kpi-speed" class="kpi-value kpi-speed">0.0 <span style="font-size:10px;">km/h</span></div>
     </div>
     <div>
-      <div class="kpi-title">總距離</div>
+      <div class="kpi-title">累積距離</div>
       <div id="kpi-dist" class="kpi-value">0.00 <span style="font-size:10px;">km</span></div>
     </div>
     <div>
-      <div class="kpi-title">總時長</div>
+      <div class="kpi-title">累積耗時</div>
       <div id="kpi-total-time" class="kpi-value">00:00</div>
     </div>
     <div>
-      <div class="kpi-title">最高時速</div>
-      <div id="kpi-max-speed" class="kpi-value">0.0</div>
+      <div class="kpi-title">受阻秒數</div>
+      <div id="kpi-stop-time" class="kpi-value" style="color:#ef4444;">0s</div>
     </div>
   </div>
 
-  <!-- 2. 開始 / 結束大按鈕 (保證直接看見) -->
+  <!-- 按鈕控制區 -->
   <div id="action-container">
     <button id="actionBtn" class="main-btn" onclick="toggleTracking()">出勤開始 (START)</button>
-    <button id="downloadBtn" onclick="exportToExcel()">下載 Excel</button>
+    <div id="status-hint"></div>
+    <button id="downloadPdfBtn" onclick="generatePDF()">📄 重新下載 PDF 考核報告</button>
   </div>
 
-  <!-- 3. 地圖區域 -->
+  <!-- 地圖 -->
   <div id="map-container">
     <div id="map"></div>
   </div>
 
-  <!-- 4. 下方直流數據面板 -->
+  <!-- 下方時間軸面板 -->
   <div id="stream-panel">
-    
-    <!-- 各速度區間時間統計 -->
     <div>
-      <div class="section-title">各速度區間時間統計 (直流分析)</div>
-      <table class="speed-table">
-        <thead>
-          <tr>
-            <th>速度等級</th>
-            <th>累計時間</th>
-            <th>時間佔比</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="badge" style="background:#ef4444;"></span>&le; 5 km/h (停車/受阻)</td>
-            <td id="t-stop" style="color:#ef4444; font-weight:bold;">0 秒</td>
-            <td id="p-stop">0%</td>
-          </tr>
-          <tr>
-            <td><span class="badge" style="background:#f97316;"></span>5 - 25 km/h (慢行)</td>
-            <td id="t-slow">0 秒</td>
-            <td id="p-slow">0%</td>
-          </tr>
-          <tr>
-            <td><span class="badge" style="background:#eab308;"></span>25 - 50 km/h (市區巡航)</td>
-            <td id="t-med">0 秒</td>
-            <td id="p-med">0%</td>
-          </tr>
-          <tr>
-            <td><span class="badge" style="background:#22c55e;"></span>50 - 70 km/h (快速)</td>
-            <td id="t-fast">0 秒</td>
-            <td id="p-fast">0%</td>
-          </tr>
-          <tr>
-            <td><span class="badge" style="background:#3b82f6;"></span>> 70 km/h (高速暢通)</td>
-            <td id="t-vfast">0 秒</td>
-            <td id="p-vfast">0%</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="section-title">行車事件時間軸 (起步 - 停滯 - 重新開車)</div>
+      <div id="timeline-box" class="timeline-list">
+        <div style="color: #64748b; font-size: 11px;" id="empty-hint">按開始後，系統將自動記錄行車時間軸...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 隱藏的 PDF 渲染容器 (供 html2pdf 轉換為標準 A4 繁體中文文件) -->
+  <div id="pdf-report-template">
+    <div class="pdf-header">
+      <div class="pdf-title">消防車輛駕駛出勤 / 考核記錄報告</div>
+      <div class="pdf-sub" id="pdf-meta">出勤時間：-</div>
     </div>
 
-    <!-- 低於 5 公里的停車地點清單 -->
-    <div>
-      <div class="section-title">受阻街道記錄 (&le;5 km/h 自動辨識街名)</div>
-      <div id="stop-list">
-        <div style="color: #64748b; font-size: 11px; padding: 4px 0;" id="empty-hint">暫無停車受阻記錄</div>
+    <div class="pdf-kpi-grid">
+      <div class="pdf-kpi-box">
+        <div class="pdf-kpi-label">總耗時</div>
+        <div class="pdf-kpi-num" id="pdf-time">00:00</div>
+      </div>
+      <div class="pdf-kpi-box">
+        <div class="pdf-kpi-label">總行駛里程</div>
+        <div class="pdf-kpi-num" id="pdf-dist">0.00 km</div>
+      </div>
+      <div class="pdf-kpi-box">
+        <div class="pdf-kpi-label">最高時速</div>
+        <div class="pdf-kpi-num" id="pdf-max">0.0 km/h</div>
+      </div>
+      <div class="pdf-kpi-box">
+        <div class="pdf-kpi-label">受阻停滯 (&le;5km/h)</div>
+        <div class="pdf-kpi-num" id="pdf-stop" style="color:#b91c1c;">0 秒 (0%)</div>
       </div>
     </div>
 
+    <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: #111827;">行車時間軸詳細清單</div>
+    <table class="pdf-table">
+      <thead>
+        <tr>
+          <th style="width: 15%;">累積時間</th>
+          <th style="width: 35%;">行車狀態</th>
+          <th style="width: 15%;">持續時長</th>
+          <th style="width: 35%;">位置 / 街道名稱</th>
+        </tr>
+      </thead>
+      <tbody id="pdf-timeline-rows">
+        <!-- 自動填充 -->
+      </tbody>
+    </table>
   </div>
 
   <script>
@@ -215,12 +229,12 @@
     let totalDistanceMeters = 0;
     let maxSpeed = 0;
     let totalSeconds = 0;
+    let stoppedTotalSeconds = 0;
     let startTimeFormatted = "";
 
-    let speedBuckets = { stop: 0, slow: 0, med: 0, fast: 0, vfast: 0 };
-    let currentStopEvent = null; 
-    let stopEventIndex = 1;
-    let allStopEvents = [];
+    let currentState = 'IDLE'; 
+    let stateStartSec = 0;
+    let timelineEvents = [];
 
     function getSpeedColor(speed) {
       if (speed <= 5.0) return '#ef4444'; 
@@ -230,9 +244,9 @@
       return '#3b82f6';                    
     }
 
-    function formatTime(totalSec) {
-      const m = Math.floor(totalSec / 60).toString().padStart(2, '0');
-      const s = (totalSec % 60).toString().padStart(2, '0');
+    function formatTimeSec(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
       return `${m}:${s}`;
     }
 
@@ -254,9 +268,7 @@
         if (data && data.address) {
           return data.address.road || data.address.pedestrian || data.address.suburb || "未知路段";
         }
-      } catch (e) {
-        console.error("街名查詢失敗:", e);
-      }
+      } catch (e) {}
       return "未知路口";
     }
 
@@ -275,44 +287,35 @@
       totalDistanceMeters = 0;
       maxSpeed = 0;
       totalSeconds = 0;
-      stopEventIndex = 1;
-      currentStopEvent = null;
-      allStopEvents = [];
-      speedBuckets = { stop: 0, slow: 0, med: 0, fast: 0, vfast: 0 };
+      stoppedTotalSeconds = 0;
+      timelineEvents = [];
+      currentState = 'RUNNING';
+      stateStartSec = 0;
       startTimeFormatted = new Date().toLocaleString('zh-HK');
 
-      document.getElementById('stop-list').innerHTML = '';
-      document.getElementById('downloadBtn').style.display = 'none';
+      document.getElementById('timeline-box').innerHTML = '';
+      document.getElementById('status-hint').innerText = '';
+      document.getElementById('downloadPdfBtn').style.display = 'none';
 
       if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
 
       isTracking = true;
       const btn = document.getElementById('actionBtn');
-      btn.innerText = '結束出勤 (STOP)';
+      btn.innerText = '結束出勤並匯出 PDF';
       btn.className = 'main-btn active';
+
+      addTimelineNode('RUNNING', 0, '起步開車', '出發點');
 
       let latestSpeed = 0;
       secondTimer = setInterval(() => {
         totalSeconds++;
-        document.getElementById('kpi-total-time').innerText = formatTime(totalSeconds);
+        document.getElementById('kpi-total-time').innerText = formatTimeSec(totalSeconds);
 
-        if (latestSpeed <= 5.0) speedBuckets.stop++;
-        else if (latestSpeed <= 25.0) speedBuckets.slow++;
-        else if (latestSpeed <= 50.0) speedBuckets.med++;
-        else if (latestSpeed <= 70.0) speedBuckets.fast++;
-        else speedBuckets.vfast++;
-
-        updateBucketUI();
-
-        if (latestSpeed <= 5.0 && currentStopEvent) {
-          currentStopEvent.duration++;
-          currentStopEvent.marker.setPopupContent(
-            `<b>📍 ${currentStopEvent.streetName} (#${currentStopEvent.id})</b><br>` +
-            `時間: ${currentStopEvent.startTime}<br>` +
-            `受阻持續: <b style="color:red">${currentStopEvent.duration} 秒</b>`
-          );
-          updateStopItemUI(currentStopEvent);
+        if (latestSpeed <= 5.0) {
+          stoppedTotalSeconds++;
+          document.getElementById('kpi-stop-time').innerText = stoppedTotalSeconds + 's';
         }
+        updateCurrentNodeDuration(totalSeconds - stateStartSec);
       }, 1000);
 
       watchId = navigator.geolocation.watchPosition(
@@ -334,46 +337,35 @@
 
           document.getElementById('kpi-speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:10px;">km/h</span>`;
           document.getElementById('kpi-speed').style.color = getSpeedColor(speed);
-          document.getElementById('kpi-max-speed').innerText = maxSpeed.toFixed(1);
 
-          if (speed <= 5.0) {
-            if (!currentStopEvent) {
-              const now = new Date();
-              const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
-              
-              const marker = L.circleMarker([lat, lng], {
-                radius: 8, color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 0.95
-              }).addTo(map);
+          if (speed <= 5.0 && currentState !== 'STOPPED') {
+            currentState = 'STOPPED';
+            stateStartSec = totalSeconds;
+            
+            const marker = L.circleMarker([lat, lng], {
+              radius: 8, color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 0.95
+            }).addTo(map);
 
-              const eventId = stopEventIndex++;
-              currentStopEvent = {
-                id: eventId,
-                lat, lng,
-                startTime: timeStr,
-                duration: 1,
-                streetName: "正在辨識街道...",
-                marker: marker
-              };
+            const node = addTimelineNode('STOPPED', totalSeconds, '車輛受阻停下 (<=5km/h)', '獲取街名中...');
+            marker.bindPopup(`<b>停滯點 (${formatTimeSec(totalSeconds)})</b>`).openPopup();
 
-              allStopEvents.push(currentStopEvent);
-              marker.bindPopup(`<b>📍 正在辨識街道... (#${eventId})</b><br>時間: ${timeStr}<br>受阻持續: 1 秒`).openPopup();
-              addStopItemToPanel(currentStopEvent);
+            fetchStreetName(lat, lng).then(st => {
+              node.street = st;
+              const el = document.getElementById(`node-loc-${node.id}`);
+              if (el) el.innerText = st;
+              marker.setPopupContent(`<b>停滯點 (${formatTimeSec(node.startSec)})</b><br>${st}`);
+            });
 
-              fetchStreetName(lat, lng).then((street) => {
-                if (currentStopEvent && currentStopEvent.id === eventId) {
-                  currentStopEvent.streetName = street;
-                  currentStopEvent.marker.setPopupContent(
-                    `<b>📍 ${street} (#${eventId})</b><br>` +
-                    `時間: ${timeStr}<br>` +
-                    `受阻持續: <b style="color:red">${currentStopEvent.duration} 秒</b>`
-                  );
-                }
-                const titleEl = document.getElementById(`stop-ui-title-${eventId}`);
-                if (titleEl) titleEl.innerText = `${street} (#${eventId})`;
-              });
-            }
-          } else {
-            currentStopEvent = null;
+          } else if (speed > 5.0 && currentState !== 'RUNNING') {
+            currentState = 'RUNNING';
+            stateStartSec = totalSeconds;
+
+            const node = addTimelineNode('RUNNING', totalSeconds, '繼續開車 (恢復速度)', '獲取街名中...');
+            fetchStreetName(lat, lng).then(st => {
+              node.street = st;
+              const el = document.getElementById(`node-loc-${node.id}`);
+              if (el) el.innerText = st;
+            });
           }
 
           if (points.length > 0) {
@@ -405,79 +397,85 @@
       const btn = document.getElementById('actionBtn');
       btn.innerText = '出勤開始 (START)';
       btn.className = 'main-btn';
-      document.getElementById('downloadBtn').style.display = 'block'; // 顯示下載按鈕
-      currentStopEvent = null;
-
-      // 自動觸發下載 Excel
-      exportToExcel();
-    }
-
-    function exportToExcel() {
-      const distKm = (totalDistanceMeters / 1000).toFixed(2);
-      const totalTimeStr = formatTime(totalSeconds);
-      const stoppedPercent = totalSeconds > 0 ? ((speedBuckets.stop / totalSeconds) * 100).toFixed(1) + "%" : "0%";
-      const stopDetailsStr = allStopEvents.map(e => `${e.streetName}(${e.duration}秒)`).join("； ") || "無受阻記錄";
-
-      const headers = ["出勤日期時間", "出勤總時長", "總里程(km)", "最高時速(km/h)", "受阻總秒數(<=5km/h)", "受阻時間佔比", "受阻街道詳細記錄"];
-      const row = [
-        `"${startTimeFormatted}"`,
-        `"${totalTimeStr}"`,
-        `"${distKm}"`,
-        `"${maxSpeed.toFixed(1)}"`,
-        `"${speedBuckets.stop} 秒"`,
-        `"${stoppedPercent}"`,
-        `"${stopDetailsStr}"`
-      ];
-
-      const csvContent = "\uFEFF" + headers.join(",") + "\n" + row.join(",");
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
       
-      const link = document.createElement("a");
-      const dateTag = new Date().toISOString().slice(0,10);
-      link.setAttribute("href", url);
-      link.setAttribute("download", `消防出勤記錄_${dateTag}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      document.getElementById('downloadPdfBtn').style.display = 'block';
+      document.getElementById('status-hint').innerText = '📄 正在產生高畫質 PDF 報告...';
+
+      // 立即生成 PDF
+      setTimeout(() => {
+        generatePDF();
+      }, 500);
     }
 
-    function updateBucketUI() {
-      const total = totalSeconds > 0 ? totalSeconds : 1;
-      document.getElementById('t-stop').innerText = `${speedBuckets.stop} 秒`;
-      document.getElementById('p-stop').innerText = `${((speedBuckets.stop / total) * 100).toFixed(0)}%`;
-      document.getElementById('t-slow').innerText = `${speedBuckets.slow} 秒`;
-      document.getElementById('p-slow').innerText = `${((speedBuckets.slow / total) * 100).toFixed(0)}%`;
-      document.getElementById('t-med').innerText = `${speedBuckets.med} 秒`;
-      document.getElementById('p-med').innerText = `${((speedBuckets.med / total) * 100).toFixed(0)}%`;
-      document.getElementById('t-fast').innerText = `${speedBuckets.fast} 秒`;
-      document.getElementById('p-fast').innerText = `${((speedBuckets.fast / total) * 100).toFixed(0)}%`;
-      document.getElementById('t-vfast').innerText = `${speedBuckets.vfast} 秒`;
-      document.getElementById('p-vfast').innerText = `${((speedBuckets.vfast / total) * 100).toFixed(0)}%`;
-    }
+    function addTimelineNode(type, sec, title, street) {
+      const id = timelineEvents.length + 1;
+      const nodeObj = { id, type, startSec: sec, duration: 1, title, street };
+      timelineEvents.push(nodeObj);
 
-    function addStopItemToPanel(stopEvt) {
-      const container = document.getElementById('stop-list');
-      const item = document.createElement('div');
-      item.className = 'stop-item';
-      item.id = `stop-ui-${stopEvt.id}`;
-      item.innerHTML = `
+      const box = document.getElementById('timeline-box');
+      const card = document.createElement('div');
+      card.className = `timeline-card ${type === 'STOPPED' ? 'stop' : 'run'}`;
+      card.id = `node-card-${id}`;
+      card.innerHTML = `
         <div>
-          <div class="stop-item-title" id="stop-ui-title-${stopEvt.id}">${stopEvt.streetName} (#${stopEvt.id})</div>
-          <div class="stop-item-time">發生時間: ${stopEvt.startTime}</div>
+          <div><span class="time-badge">${formatTimeSec(sec)}</span> <b>${title}</b></div>
+          <div class="loc-text" id="node-loc-${id}">${street}</div>
         </div>
-        <div style="font-weight:bold; color:#ef4444;" id="stop-ui-dur-${stopEvt.id}">1s</div>
+        <div style="font-weight:bold; font-size:13px;" id="node-dur-${id}">1s</div>
       `;
-      item.onclick = () => {
-        map.setView([stopEvt.lat, stopEvt.lng], 17);
-        stopEvt.marker.openPopup();
-      };
-      container.prepend(item);
+      box.prepend(card);
+      return nodeObj;
     }
 
-    function updateStopItemUI(stopEvt) {
-      const el = document.getElementById(`stop-ui-dur-${stopEvt.id}`);
-      if (el) el.innerText = `${stopEvt.duration}s`;
+    function updateCurrentNodeDuration(dur) {
+      if (timelineEvents.length === 0) return;
+      const last = timelineEvents[timelineEvents.length - 1];
+      last.duration = dur;
+      const el = document.getElementById(`node-dur-${last.id}`);
+      if (el) el.innerText = `${dur}s`;
+    }
+
+    // 將資料填入隱藏模板並導出 PDF
+    function generatePDF() {
+      const distKm = (totalDistanceMeters / 1000).toFixed(2);
+      const stoppedPercent = totalSeconds > 0 ? ((stoppedTotalSeconds / totalSeconds) * 100).toFixed(1) + "%" : "0%";
+
+      // 填寫 PDF 模板內容
+      document.getElementById('pdf-meta').innerText = `出勤記錄時間：${startTimeFormatted} ｜ 產生時間：${new Date().toLocaleString('zh-HK')}`;
+      document.getElementById('pdf-time').innerText = formatTimeSec(totalSeconds);
+      document.getElementById('pdf-dist').innerText = `${distKm} km`;
+      document.getElementById('pdf-max').innerText = `${maxSpeed.toFixed(1)} km/h`;
+      document.getElementById('pdf-stop').innerText = `${stoppedTotalSeconds} 秒 (${stoppedPercent})`;
+
+      const tbody = document.getElementById('pdf-timeline-rows');
+      tbody.innerHTML = '';
+      timelineEvents.forEach(e => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-family:monospace; font-weight:bold;">${formatTimeSec(e.startSec)}</td>
+          <td style="color:${e.type === 'STOPPED' ? '#b91c1c' : '#059669'}; font-weight:bold;">${e.title}</td>
+          <td>${e.duration} 秒</td>
+          <td>${e.street || "市區路段"}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // 暫時顯示模板進行截圖轉化
+      const element = document.getElementById('pdf-report-template');
+      element.style.display = 'block';
+
+      const opt = {
+        margin:       [10, 10, 10, 10],
+        filename:     `消防出勤考核報告_${new Date().toISOString().slice(0,10)}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      html2pdf().set(opt).from(element).save().then(() => {
+        element.style.display = 'none'; // 隱藏回模板
+        document.getElementById('status-hint').innerText = '✅ PDF 考核報告已成功下載！';
+      });
     }
   </script>
 </body>
