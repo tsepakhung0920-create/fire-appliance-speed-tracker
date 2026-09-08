@@ -3,15 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>消防出勤測速與考核分析</title>
+  <title>消防車出勤與駕駛考核系統</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
+    html, body { height: 100%; background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; }
 
     /* 頂部即時核心儀表 */
     #top-bar {
@@ -55,11 +54,11 @@
       background: #dc2626;
       border-color: #f87171;
     }
-    #downloadPdfBtn {
+    #exportPdfBtn {
       display: none;
       width: 100%;
-      padding: 8px;
-      font-size: 12px;
+      padding: 9px;
+      font-size: 13px;
       font-weight: bold;
       background: #0284c7;
       border: 1px solid #38bdf8;
@@ -68,10 +67,9 @@
       text-align: center;
       cursor: pointer;
     }
-    #status-hint { font-size: 10px; text-align: center; color: #38bdf8; min-height: 12px; }
 
     /* 中間即時地圖 */
-    #map-container { height: 34vh; width: 100%; position: relative; flex-shrink: 0; }
+    #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
     /* 下方時間軸面板 */
@@ -108,84 +106,43 @@
     .time-badge { font-family: monospace; font-weight: bold; background: #334155; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
     .loc-text { color: #cbd5e1; font-size: 11px; margin-top: 1px; }
 
-    /* ================= 兩頁式 A4 PDF 專用版面 ================= */
-    #pdf-report-template {
-      display: none;
-      width: 750px;
-      background: #ffffff;
-      color: #111827;
-      font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "PingFang TC", sans-serif;
-    }
+    /* ================= 專為產生 PDF 設計的原生列印樣式 ================= */
+    #print-data-page { display: none; }
 
-    .pdf-page {
-      padding: 24px 28px;
-      height: 1045px;
-      box-sizing: border-box;
-      position: relative;
-      background: #fff;
-    }
-    .page-break {
-      page-break-after: always;
-      break-after: page;
-    }
+    @media print {
+      /* 隱藏網頁操作介面 */
+      #top-bar, #action-container, #stream-panel { display: none !important; }
+      html, body { background: #fff !important; color: #000 !important; height: auto !important; overflow: visible !important; }
 
-    .pdf-header { border-bottom: 2px solid #dc2626; padding-bottom: 6px; margin-bottom: 12px; }
-    .pdf-title { font-size: 20px; font-weight: bold; color: #dc2626; display: flex; justify-content: space-between; align-items: flex-end; }
-    .pdf-time-row { font-size: 11px; color: #4b5563; font-weight: 600; margin-top: 4px; }
+      /* 第一頁：考核統計與時間軸清單 */
+      #print-data-page {
+        display: block !important;
+        page-break-after: always;
+        break-after: page;
+        padding: 20px;
+      }
+      .print-header { border-bottom: 2px solid #dc2626; padding-bottom: 6px; margin-bottom: 12px; }
+      .print-title { font-size: 20px; font-weight: bold; color: #dc2626; display: flex; justify-content: space-between; }
+      .print-time-row { font-size: 11px; color: #4b5563; font-weight: 600; margin-top: 4px; }
+      .print-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
+      .print-kpi-box { border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 2px; text-align: center; }
+      .print-kpi-label { font-size: 9px; color: #64748b; }
+      .print-kpi-num { font-size: 13px; font-weight: bold; margin-top: 1px; }
+      .print-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+      .print-table th, .print-table td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left; }
+      .print-table th { background: #f1f5f9; }
 
-    .pdf-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 14px; }
-    .pdf-kpi-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 4px; text-align: center; }
-    .pdf-kpi-label { font-size: 10px; color: #64748b; }
-    .pdf-kpi-num { font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 2px; }
-
-    .pdf-section-title { font-size: 13px; font-weight: bold; color: #0f172a; margin: 12px 0 6px 0; border-left: 4px solid #dc2626; padding-left: 6px; }
-
-    .pdf-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 10px; }
-    .pdf-table th { background: #f1f5f9; color: #334155; padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left; }
-    .pdf-table td { padding: 6px 8px; border: 1px solid #cbd5e1; }
-
-    /* 第二頁：地圖容器 (雙層架構：底層街道圖片 + 頂層向量軌跡) */
-    #pdf-page-2-map-box {
-      width: 100%;
-      height: 860px;
-      border: 2px solid #94a3b8;
-      border-radius: 6px;
-      overflow: hidden;
-      position: relative;
-      background: #e2e8f0;
+      /* 第二頁：直接使用網頁上的 Leaflet 真實街道地圖放大滿版 */
+      #map-container {
+        display: block !important;
+        position: relative !important;
+        width: 100vw !important;
+        height: 96vh !important;
+        page-break-before: always;
+        break-before: page;
+      }
+      #map { width: 100% !important; height: 100% !important; }
     }
-    #pdf-bg-street-img {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    #pdf-canvas-map {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    .map-legend {
-      position: absolute;
-      top: 14px;
-      left: 14px;
-      background: rgba(255, 255, 255, 0.94);
-      color: #0f172a;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 11px;
-      border: 1px solid #cbd5e1;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-      z-index: 10;
-    }
-    .legend-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
-    .color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   </style>
 </head>
 <body>
@@ -217,11 +174,10 @@
   <!-- 操作按鈕區 -->
   <div id="action-container">
     <button id="actionBtn" class="main-btn" onclick="toggleTracking()">出勤開始 (START)</button>
-    <div id="status-hint"></div>
-    <button id="downloadPdfBtn" onclick="generatePDF()">📄 重新下載 2 頁式 PDF 考核報告</button>
+    <button id="exportPdfBtn" onclick="triggerPrintPDF()">📄 匯出 2 頁式 PDF 考核報告 (帶真實街圖)</button>
   </div>
 
-  <!-- 即時地圖 -->
+  <!-- 即時地圖 (列印時直接作為第二頁滿版地圖) -->
   <div id="map-container">
     <div id="map"></div>
   </div>
@@ -236,93 +192,59 @@
     </div>
   </div>
 
-  <!-- ================= 2 頁式 PDF 渲染容器 ================= -->
-  <div id="pdf-report-template">
-    
-    <!-- 第一頁：考核統計與時間軸清單 -->
-    <div class="pdf-page page-break">
-      <div class="pdf-header">
-        <div class="pdf-title">
-          <span>消防車輛駕駛出勤 / 考試分析報告</span>
-          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第一頁：數據統計與路況時間軸</span>
-        </div>
-        <div class="pdf-time-row" id="pdf-times-summary">
-          出勤起步時間：- ｜ 到達目的地時間：-
-        </div>
+  <!-- 列印專用第一頁容器 -->
+  <div id="print-data-page">
+    <div class="print-header">
+      <div class="print-title">
+        <span>消防車輛駕駛出勤 / 考試分析報告</span>
+        <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第一頁：數據統計與路況時間軸</span>
       </div>
-
-      <div class="pdf-kpi-grid">
-        <div class="pdf-kpi-box">
-          <div class="pdf-kpi-label">總耗時</div>
-          <div class="pdf-kpi-num" id="pdf-time">00:00</div>
-        </div>
-        <div class="pdf-kpi-box">
-          <div class="pdf-kpi-label">總行駛距離</div>
-          <div class="pdf-kpi-num" id="pdf-dist">0.00 km</div>
-        </div>
-        <div class="pdf-kpi-box">
-          <div class="pdf-kpi-label">平均車速</div>
-          <div class="pdf-kpi-num" id="pdf-avg">0.0 km/h</div>
-        </div>
-        <div class="pdf-kpi-box">
-          <div class="pdf-kpi-label">最高車速</div>
-          <div class="pdf-kpi-num" id="pdf-max">0.0 km/h</div>
-        </div>
-        <div class="pdf-kpi-box">
-          <div class="pdf-kpi-label">受阻停頓 (&le;5km/h)</div>
-          <div class="pdf-kpi-num" id="pdf-stop" style="color:#b91c1c;">0 秒</div>
-        </div>
-      </div>
-
-      <div class="pdf-section-title">行車記錄與停頓位置詳細說明</div>
-      <table class="pdf-table">
-        <thead>
-          <tr>
-            <th style="width: 14%;">累積時間</th>
-            <th style="width: 30%;">事件 / 狀態</th>
-            <th style="width: 14%;">持續時長</th>
-            <th style="width: 42%;">街道名稱 與 地標/大廈名稱</th>
-          </tr>
-        </thead>
-        <tbody id="pdf-timeline-rows">
-        </tbody>
-      </table>
-    </div>
-
-    <!-- 第二頁：真實街道底圖 + 全景軌跡 -->
-    <div class="pdf-page">
-      <div class="pdf-header">
-        <div class="pdf-title">
-          <span>行車速度與路線全景軌跡地圖</span>
-          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第二頁：真實街道底圖與軌跡</span>
-        </div>
-      </div>
-
-      <div id="pdf-page-2-map-box">
-        <!-- 底層真實街道底圖（保證載入，不受 Canvas 污染限制） -->
-        <img id="pdf-bg-street-img" alt="真實街道底圖" />
-        <!-- 頂層冷暖色軌跡與標記 -->
-        <canvas id="pdf-canvas-map" width="1000" height="1200"></canvas>
-        <div class="map-legend">
-          <div style="font-weight:bold; margin-bottom:4px; border-bottom:1px solid #cbd5e1; padding-bottom:2px;">速度顏色指標</div>
-          <div class="legend-row"><span class="color-dot" style="background:#ef4444;"></span> 紅色：&le; 5 km/h (停車/受阻)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#f97316;"></span> 橙色：5 - 25 km/h (慢行)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#eab308;"></span> 黃色：25 - 50 km/h (巡航)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#22c55e;"></span> 綠色：50 - 70 km/h (快速)</div>
-          <div class="legend-row"><span class="color-dot" style="background:#3b82f6;"></span> 藍色：> 70 km/h (高速)</div>
-        </div>
+      <div class="print-time-row" id="p-times-summary">
+        出勤起步時間：- ｜ 到達目的地時間：-
       </div>
     </div>
 
+    <div class="print-kpi-grid">
+      <div class="print-kpi-box">
+        <div class="print-kpi-label">總耗時</div>
+        <div class="print-kpi-num" id="p-time">00:00</div>
+      </div>
+      <div class="print-kpi-box">
+        <div class="print-kpi-label">總行駛距離</div>
+        <div class="print-kpi-num" id="p-dist">0.00 km</div>
+      </div>
+      <div class="print-kpi-box">
+        <div class="print-kpi-label">平均車速</div>
+        <div class="print-kpi-num" id="p-avg">0.0 km/h</div>
+      </div>
+      <div class="print-kpi-box">
+        <div class="print-kpi-label">最高車速</div>
+        <div class="print-kpi-num" id="p-max">0.0 km/h</div>
+      </div>
+      <div class="print-kpi-box">
+        <div class="print-kpi-label">受阻停頓 (&le;5km/h)</div>
+        <div class="print-kpi-num" id="p-stop" style="color:#b91c1c;">0 秒</div>
+      </div>
+    </div>
+
+    <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">行車記錄與停頓位置詳細說明</div>
+    <table class="print-table">
+      <thead>
+        <tr>
+          <th style="width: 14%;">累積時間</th>
+          <th style="width: 28%;">事件 / 狀態</th>
+          <th style="width: 14%;">持續時長</th>
+          <th style="width: 44%;">街道名稱 與 地標/大廈名稱</th>
+        </tr>
+      </thead>
+      <tbody id="p-timeline-rows"></tbody>
+    </table>
   </div>
 
   <script>
+    // 使用高清晰 OpenStreetMap 瓦片
     let map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 15);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      subdomains: 'abcd',
-      crossOrigin: true
-    }).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
     let isTracking = false;
     let watchId = null;
@@ -371,7 +293,7 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // 核心升級：抓取「街道名稱 + 具體大廈/屋苑/地標」，過濾行政區域
+    // 抓取街道與精確地標/屋苑
     async function fetchDetailedLocation(lat, lon, stopIndex = null) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh-TW,zh-HK`;
@@ -380,22 +302,14 @@
         if (data && data.address) {
           const addr = data.address;
           const road = addr.road || addr.pedestrian || "";
-          
-          // 明確尋找大廈名、屋苑名、地標名、門牌
           const landmark = addr.building || addr.residential || addr.house_name || addr.house_number || 
                            addr.amenity || addr.shop || addr.leisure || addr.tourism || "";
 
           let locDesc = "";
-          if (road && landmark) {
-            locDesc = `${road} 近 ${landmark}`;
-          } else if (road) {
-            locDesc = `${road}`;
-          } else if (landmark) {
-            locDesc = `近 ${landmark}`;
-          } else {
-            // 取第一段具體名稱，不取最後的九龍城/馬頭圍
-            locDesc = data.display_name.split(',')[0] || "市區路段";
-          }
+          if (road && landmark) locDesc = `${road} 近 ${landmark}`;
+          else if (road) locDesc = `${road}`;
+          else if (landmark) locDesc = `近 ${landmark}`;
+          else locDesc = data.display_name.split(',')[0] || "市區路段";
 
           if (stopIndex !== null) return `停頓點 ${stopIndex} (${locDesc})`;
           return locDesc;
@@ -429,8 +343,7 @@
       endTimeObj = null;
 
       document.getElementById('timeline-box').innerHTML = '';
-      document.getElementById('status-hint').innerText = '';
-      document.getElementById('downloadPdfBtn').style.display = 'none';
+      document.getElementById('exportPdfBtn').style.display = 'none';
 
       if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
 
@@ -544,12 +457,18 @@
       btn.innerText = '出勤開始 (START)';
       btn.className = 'main-btn';
       
-      document.getElementById('downloadPdfBtn').style.display = 'block';
-      document.getElementById('status-hint').innerText = '🗺️ 正在載入真實街道底圖並生成 2 頁式 PDF...';
+      document.getElementById('exportPdfBtn').style.display = 'block';
 
+      // 自適應地圖視野縮放，保證整條路線與停頓點全部完整入鏡
+      if (points.length > 1) {
+        const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+        map.fitBounds(bounds, { padding: [40, 40] });
+      }
+
+      // 自動觸發匯出 PDF
       setTimeout(() => {
-        generatePDF();
-      }, 500);
+        triggerPrintPDF();
+      }, 800);
     }
 
     function addTimelineNode(type, sec, title, street) {
@@ -580,132 +499,8 @@
       if (el) el.innerText = `${dur}s`;
     }
 
-    function lon2tile(lon, zoom) { return (lon + 180) / 360 * Math.pow(2, zoom); }
-    function lat2tile(lat, zoom) { return (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom); }
-
-    // 渲染真實街道底圖與軌跡（雙重保證載入機制）
-    async function renderFullPageMapWithStreets() {
-      const canvas = document.getElementById('pdf-canvas-map');
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
-      const bgImg = document.getElementById('pdf-bg-street-img');
-
-      ctx.clearRect(0, 0, w, h);
-
-      // 即使在室內無座標，也自動鎖定當前地圖中心或預設香港座標
-      let centerLat = 22.3193, centerLng = 114.1694;
-      if (points.length > 0) {
-        centerLat = points[points.length - 1].lat;
-        centerLng = points[points.length - 1].lng;
-      } else {
-        const mapCenter = map.getCenter();
-        centerLat = mapCenter.lat;
-        centerLng = mapCenter.lng;
-      }
-
-      let minLat = centerLat - 0.006, maxLat = centerLat + 0.006;
-      let minLng = centerLng - 0.006, maxLng = centerLng + 0.006;
-
-      if (points.length >= 2) {
-        minLat = 999; maxLat = -999; minLng = 999; maxLng = -999;
-        points.forEach(p => {
-          if (p.lat < minLat) minLat = p.lat;
-          if (p.lat > maxLat) maxLat = p.lat;
-          if (p.lng < minLng) minLng = p.lng;
-          if (p.lng > maxLng) maxLng = p.lng;
-        });
-        const latSpan = (maxLat - minLat) || 0.003;
-        const lngSpan = (maxLng - minLng) || 0.003;
-        minLat -= latSpan * 0.25; maxLat += latSpan * 0.25;
-        minLng -= lngSpan * 0.25; maxLng += lngSpan * 0.25;
-      }
-
-      // 透過靜態圖片 API 直接加載真實香港街道圖（100% 繞過手機 Canvas 跨域限制）
-      const bbox = `${minLng.toFixed(4)},${minLat.toFixed(4)},${maxLng.toFixed(4)},${maxLat.toFixed(4)}`;
-      const staticMapUrl = `https://static-maps.yandex.ru/1.x/?bbox=${bbox}&size=650,450&l=map&lang=zh_TW`;
-      
-      await new Promise((resolve) => {
-        bgImg.onload = () => resolve();
-        bgImg.onerror = () => {
-          // 備用底圖：香港高解析街道底圖
-          bgImg.src = `https://maps.geoapify.com/v1/staticmap?style=osm-bright&width=1000&height=1200&center=lonlat:${centerLng},${centerLat}&zoom=15&apiKey=0c8d7658c2b7405ba07a68c09a8a729e`;
-          bgImg.onload = () => resolve();
-          bgImg.onerror = () => resolve();
-        };
-        bgImg.src = staticMapUrl;
-      });
-
-      // 頂層 Canvas 畫布：冷暖色軌跡與停頓點標記
-      let zoom = 15;
-      const centerTileX = (lon2tile(minLng, zoom) + lon2tile(maxLng, zoom)) / 2;
-      const centerTileY = (lat2tile(minLat, zoom) + lat2tile(maxLat, zoom)) / 2;
-
-      function coordToPixel(lat, lng) {
-        const px = (lon2tile(lng, zoom) - centerTileX) * 256 * 2.8 + w / 2;
-        const py = (lat2tile(lat, zoom) - centerTileY) * 256 * 2.8 + h / 2;
-        return { x: px, y: py };
-      }
-
-      if (points.length >= 2) {
-        // 繪製軌跡
-        for (let i = 0; i < points.length - 1; i++) {
-          const p1 = points[i];
-          const p2 = points[i + 1];
-          const segSpeed = (p1.speed + p2.speed) / 2;
-          const pos1 = coordToPixel(p1.lat, p1.lng);
-          const pos2 = coordToPixel(p2.lat, p2.lng);
-
-          ctx.lineWidth = 14;
-          ctx.lineCap = "round";
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-          ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
-
-          ctx.lineWidth = 9;
-          ctx.strokeStyle = getSpeedColor(segSpeed);
-          ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
-        }
-
-        // 標註起點
-        const startPos = coordToPixel(points[0].lat, points[0].lng);
-        ctx.fillStyle = "#10b981"; ctx.beginPath(); ctx.arc(startPos.x, startPos.y, 14, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-        ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
-        ctx.fillText("起點 (出發)", startPos.x + 18, startPos.y + 6);
-
-        // 標註停頓點
-        let stopIdx = 1;
-        for (let i = 0; i < points.length; i++) {
-          if (points[i].speed <= 5.0 && (i === 0 || points[i-1].speed > 5.0)) {
-            const sPos = coordToPixel(points[i].lat, points[i].lng);
-            ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(sPos.x, sPos.y, 15, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-            ctx.fillStyle = "#fff"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(stopIdx.toString(), sPos.x, sPos.y + 5);
-            ctx.fillStyle = "#b91c1c"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left";
-            ctx.fillText(`停頓#${stopIdx}`, sPos.x + 18, sPos.y + 5);
-            stopIdx++;
-          }
-        }
-
-        // 標註到達點
-        const endPos = coordToPixel(points[points.length - 1].lat, points[points.length - 1].lng);
-        ctx.fillStyle = "#3b82f6"; ctx.beginPath(); ctx.arc(endPos.x, endPos.y, 14, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-        ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
-        ctx.fillText("終點 (現場)", endPos.x + 18, endPos.y + 6);
-      } else {
-        // 室內單點時標註當前位置
-        const currentPos = coordToPixel(centerLat, centerLng);
-        ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(currentPos.x, currentPos.y, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-        ctx.fillStyle = "#0f172a"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
-        ctx.fillText("當前停駐位置 (街道底圖正常顯示)", currentPos.x + 16, currentPos.y + 6);
-      }
-    }
-
-    // 產生兩頁式 PDF 核心邏輯
-    async function generatePDF() {
+    // 呼叫原生系統匯出 100% 帶真實地圖的 2 頁式 PDF
+    function triggerPrintPDF() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const hours = totalSeconds / 3600;
       const avgSpeed = hours > 0 ? (distKm / hours).toFixed(1) : "0.0";
@@ -713,15 +508,15 @@
 
       const startStr = startTimeObj ? `${startTimeObj.toLocaleDateString('zh-HK')} ${formatClockTime(startTimeObj)}` : "-";
       const endStr = endTimeObj ? formatClockTime(endTimeObj) : "-";
-      document.getElementById('pdf-times-summary').innerText = `出勤起步時間：${startStr} ｜ 到達目的地時間：${endStr}`;
+      
+      document.getElementById('p-times-summary').innerText = `出勤起步時間：${startStr} ｜ 到達目的地時間：${endStr}`;
+      document.getElementById('p-time').innerText = formatTimeSec(totalSeconds);
+      document.getElementById('p-dist').innerText = `${distKm} km`;
+      document.getElementById('p-avg').innerText = `${avgSpeed} km/h`;
+      document.getElementById('p-max').innerText = `${maxSpeed.toFixed(1)} km/h`;
+      document.getElementById('p-stop').innerText = `${stoppedTotalSeconds} 秒 (${stoppedPercent})`;
 
-      document.getElementById('pdf-time').innerText = formatTimeSec(totalSeconds);
-      document.getElementById('pdf-dist').innerText = `${distKm} km`;
-      document.getElementById('pdf-avg').innerText = `${avgSpeed} km/h`;
-      document.getElementById('pdf-max').innerText = `${maxSpeed.toFixed(1)} km/h`;
-      document.getElementById('pdf-stop').innerText = `${stoppedTotalSeconds} 秒 (${stoppedPercent})`;
-
-      const tbody = document.getElementById('pdf-timeline-rows');
+      const tbody = document.getElementById('p-timeline-rows');
       tbody.innerHTML = '';
       timelineEvents.forEach(e => {
         const tr = document.createElement('tr');
@@ -734,24 +529,9 @@
         tbody.appendChild(tr);
       });
 
-      // 渲染底圖
-      await renderFullPageMapWithStreets();
-
-      const template = document.getElementById('pdf-report-template');
-      template.style.display = 'block';
-
-      const opt = {
-        margin:       [0, 0, 0, 0],
-        filename:     `消防出勤考核報告_${new Date().toISOString().slice(0,10)}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-
-      html2pdf().set(opt).from(template).save().then(() => {
-        template.style.display = 'none';
-        document.getElementById('status-hint').innerText = '✅ 2 頁式 PDF（包含真實街道地圖）已成功下載！';
-      });
+      // 重新計算 Leaflet 尺寸並觸發瀏覽器原生列印
+      map.invalidateSize();
+      window.print();
     }
   </script>
 </body>
