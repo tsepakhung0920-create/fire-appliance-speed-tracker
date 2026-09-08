@@ -68,7 +68,7 @@
       cursor: pointer;
     }
 
-    /* 中間即時地圖 */
+    /* 手機操作時的中間地圖 */
     #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
@@ -106,20 +106,31 @@
     .time-badge { font-family: monospace; font-weight: bold; background: #334155; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
     .loc-text { color: #cbd5e1; font-size: 11px; margin-top: 1px; }
 
-    /* ================= 專為產生 PDF 設計的原生列印樣式 ================= */
-    #print-data-page { display: none; }
+    /* ================= 專為 PDF 列印設定的樣式 ================= */
+    #print-wrapper { display: none; }
 
     @media print {
-      /* 隱藏網頁操作介面 */
-      #top-bar, #action-container, #stream-panel { display: none !important; }
-      html, body { background: #fff !important; color: #000 !important; height: auto !important; overflow: visible !important; }
+      /* 隱藏螢幕操作介面 */
+      #top-bar, #action-container, #map-container, #stream-panel { display: none !important; }
+      
+      html, body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        height: auto !important;
+        overflow: visible !important;
+      }
 
-      /* 第一頁：考核統計與時間軸清單 */
-      #print-data-page {
+      #print-wrapper {
         display: block !important;
-        page-break-after: always;
-        break-after: page;
-        padding: 20px;
+        width: 100% !important;
+      }
+
+      /* 第一頁樣式 */
+      .page-one {
+        page-break-after: always !important;
+        break-after: page !important;
+        padding: 24px;
+        min-height: 95vh;
       }
       .print-header { border-bottom: 2px solid #dc2626; padding-bottom: 6px; margin-bottom: 12px; }
       .print-title { font-size: 20px; font-weight: bold; color: #dc2626; display: flex; justify-content: space-between; }
@@ -132,16 +143,20 @@
       .print-table th, .print-table td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left; }
       .print-table th { background: #f1f5f9; }
 
-      /* 第二頁：直接使用網頁上的 Leaflet 真實街道地圖放大滿版 */
-      #map-container {
-        display: block !important;
-        position: relative !important;
-        width: 100vw !important;
+      /* 第二頁：滿版大街道地圖 */
+      .page-two {
+        page-break-before: always !important;
+        break-before: page !important;
+        padding: 20px;
         height: 96vh !important;
-        page-break-before: always;
-        break-before: page;
+        box-sizing: border-box;
       }
-      #map { width: 100% !important; height: 100% !important; }
+      #print-map-container {
+        width: 100% !important;
+        height: 85vh !important;
+        border: 2px solid #94a3b8;
+        border-radius: 6px;
+      }
     }
   </style>
 </head>
@@ -174,10 +189,10 @@
   <!-- 操作按鈕區 -->
   <div id="action-container">
     <button id="actionBtn" class="main-btn" onclick="toggleTracking()">出勤開始 (START)</button>
-    <button id="exportPdfBtn" onclick="triggerPrintPDF()">📄 匯出 2 頁式 PDF 考核報告 (帶真實街圖)</button>
+    <button id="exportPdfBtn" onclick="triggerPrintPDF()">📄 匯出 2 頁式 PDF 考核報告 (包含街道底圖)</button>
   </div>
 
-  <!-- 即時地圖 (列印時直接作為第二頁滿版地圖) -->
+  <!-- 中間即時地圖 (操作用) -->
   <div id="map-container">
     <div id="map"></div>
   </div>
@@ -192,59 +207,75 @@
     </div>
   </div>
 
-  <!-- 列印專用第一頁容器 -->
-  <div id="print-data-page">
-    <div class="print-header">
-      <div class="print-title">
-        <span>消防車輛駕駛出勤 / 考試分析報告</span>
-        <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第一頁：數據統計與路況時間軸</span>
+  <!-- ================= 列印專用 2 頁式包裝容器 ================= -->
+  <div id="print-wrapper">
+    <!-- 第一頁：數據與列表 -->
+    <div class="page-one">
+      <div class="print-header">
+        <div class="print-title">
+          <span>消防車輛駕駛出勤 / 考試分析報告</span>
+          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第一頁：數據統計與路況時間軸</span>
+        </div>
+        <div class="print-time-row" id="p-times-summary">
+          出勤起步時間：- ｜ 到達目的地時間：-
+        </div>
       </div>
-      <div class="print-time-row" id="p-times-summary">
-        出勤起步時間：- ｜ 到達目的地時間：-
+
+      <div class="print-kpi-grid">
+        <div class="print-kpi-box">
+          <div class="print-kpi-label">總耗時</div>
+          <div class="print-kpi-num" id="p-time">00:00</div>
+        </div>
+        <div class="print-kpi-box">
+          <div class="print-kpi-label">總行駛距離</div>
+          <div class="print-kpi-num" id="p-dist">0.00 km</div>
+        </div>
+        <div class="print-kpi-box">
+          <div class="print-kpi-label">平均車速</div>
+          <div class="print-kpi-num" id="p-avg">0.0 km/h</div>
+        </div>
+        <div class="print-kpi-box">
+          <div class="print-kpi-label">最高車速</div>
+          <div class="print-kpi-num" id="p-max">0.0 km/h</div>
+        </div>
+        <div class="print-kpi-box">
+          <div class="print-kpi-label">受阻停頓 (&le;5km/h)</div>
+          <div class="print-kpi-num" id="p-stop" style="color:#b91c1c;">0 秒</div>
+        </div>
       </div>
+
+      <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">行車記錄與停頓位置詳細說明</div>
+      <table class="print-table">
+        <thead>
+          <tr>
+            <th style="width: 14%;">累積時間</th>
+            <th style="width: 28%;">事件 / 狀態</th>
+            <th style="width: 14%;">持續時長</th>
+            <th style="width: 44%;">街道名稱 與 地標/大廈名稱</th>
+          </tr>
+        </thead>
+        <tbody id="p-timeline-rows"></tbody>
+      </table>
     </div>
 
-    <div class="print-kpi-grid">
-      <div class="print-kpi-box">
-        <div class="print-kpi-label">總耗時</div>
-        <div class="print-kpi-num" id="p-time">00:00</div>
+    <!-- 第二頁：滿版地圖 (直接由 Leaflet 渲染街道底圖) -->
+    <div class="page-two">
+      <div class="print-header">
+        <div class="print-title">
+          <span>行車速度與路線全景軌跡地圖</span>
+          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第二頁：真實街道底圖與軌跡</span>
+        </div>
       </div>
-      <div class="print-kpi-box">
-        <div class="print-kpi-label">總行駛距離</div>
-        <div class="print-kpi-num" id="p-dist">0.00 km</div>
-      </div>
-      <div class="print-kpi-box">
-        <div class="print-kpi-label">平均車速</div>
-        <div class="print-kpi-num" id="p-avg">0.0 km/h</div>
-      </div>
-      <div class="print-kpi-box">
-        <div class="print-kpi-label">最高車速</div>
-        <div class="print-kpi-num" id="p-max">0.0 km/h</div>
-      </div>
-      <div class="print-kpi-box">
-        <div class="print-kpi-label">受阻停頓 (&le;5km/h)</div>
-        <div class="print-kpi-num" id="p-stop" style="color:#b91c1c;">0 秒</div>
-      </div>
+      <div id="print-map-container"></div>
     </div>
-
-    <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">行車記錄與停頓位置詳細說明</div>
-    <table class="print-table">
-      <thead>
-        <tr>
-          <th style="width: 14%;">累積時間</th>
-          <th style="width: 28%;">事件 / 狀態</th>
-          <th style="width: 14%;">持續時長</th>
-          <th style="width: 44%;">街道名稱 與 地標/大廈名稱</th>
-        </tr>
-      </thead>
-      <tbody id="p-timeline-rows"></tbody>
-    </table>
   </div>
 
   <script>
-    // 使用高清晰 OpenStreetMap 瓦片
+    // 預設香港中心坐標
     let map = L.map('map', { zoomControl: false }).setView([22.3193, 114.1694], 15);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+    let printMap = null; // 專供第二頁列印的大地圖
 
     let isTracking = false;
     let watchId = null;
@@ -293,7 +324,6 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // 抓取街道與精確地標/屋苑
     async function fetchDetailedLocation(lat, lon, stopIndex = null) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh-TW,zh-HK`;
@@ -392,7 +422,6 @@
           document.getElementById('kpi-speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:8px;">km/h</span>`;
           document.getElementById('kpi-speed').style.color = getSpeedColor(speed);
 
-          // 停頓識別 (<=5 km/h)
           if (speed <= 5.0 && currentState !== 'STOPPED') {
             currentState = 'STOPPED';
             stateStartSec = totalSeconds;
@@ -459,16 +488,16 @@
       
       document.getElementById('exportPdfBtn').style.display = 'block';
 
-      // 自適應地圖視野縮放，保證整條路線與停頓點全部完整入鏡
+      // 自適應縮放
       if (points.length > 1) {
         const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [40, 40] });
       }
 
-      // 自動觸發匯出 PDF
+      // 自動觸發列印
       setTimeout(() => {
         triggerPrintPDF();
-      }, 800);
+      }, 500);
     }
 
     function addTimelineNode(type, sec, title, street) {
@@ -499,7 +528,7 @@
       if (el) el.innerText = `${dur}s`;
     }
 
-    // 呼叫原生系統匯出 100% 帶真實地圖的 2 頁式 PDF
+    // 觸發列印的核心邏輯：初始化第二頁的大地圖
     function triggerPrintPDF() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const hours = totalSeconds / 3600;
@@ -529,9 +558,34 @@
         tbody.appendChild(tr);
       });
 
-      // 重新計算 Leaflet 尺寸並觸發瀏覽器原生列印
-      map.invalidateSize();
-      window.print();
+      // 初始化第二頁滿版大地圖容器
+      if (!printMap) {
+        printMap = L.map('print-map-container', { zoomControl: false });
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(printMap);
+      }
+
+      // 同步軌跡到第二頁大地圖
+      if (points.length >= 2) {
+        for (let i = 0; i < points.length - 1; i++) {
+          const p1 = points[i];
+          const p2 = points[i + 1];
+          L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], {
+            color: getSpeedColor((p1.speed + p2.speed) / 2),
+            weight: 7,
+            opacity: 0.9
+          }).addTo(printMap);
+        }
+        const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+        printMap.fitBounds(bounds, { padding: [30, 30] });
+      } else {
+        printMap.setView(map.getCenter(), 16);
+      }
+
+      // 重新計算尺寸並喚起列印
+      setTimeout(() => {
+        printMap.invalidateSize();
+        window.print();
+      }, 300);
     }
   </script>
 </body>
