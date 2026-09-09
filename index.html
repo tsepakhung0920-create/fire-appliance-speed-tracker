@@ -7,7 +7,6 @@
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- 直接生成 PDF 下載 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
@@ -71,7 +70,7 @@
     }
     #status-hint { font-size: 10px; text-align: center; color: #38bdf8; min-height: 12px; }
 
-    /* 手機操作介面地圖 */
+    /* 手機即時地圖 */
     #map-container { height: 35vh; width: 100%; position: relative; flex-shrink: 0; }
     #map { height: 100%; width: 100%; }
 
@@ -109,7 +108,7 @@
     .time-badge { font-family: monospace; font-weight: bold; background: #334155; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
     .loc-text { color: #cbd5e1; font-size: 11px; margin-top: 1px; }
 
-    /* ================= 匯出 PDF 專用結構 ================= */
+    /* ================= 動態分頁 PDF 結構 ================= */
     #pdf-render-root {
       display: none;
       background: #ffffff;
@@ -118,17 +117,9 @@
       font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "PingFang TC", sans-serif;
     }
 
-    .pdf-page-block {
-      width: 760px;
-      height: 1060px;
-      padding: 24px 28px;
-      box-sizing: border-box;
-      position: relative;
+    .pdf-data-section {
+      padding: 24px 28px 10px 28px;
       background: #fff;
-    }
-    .pdf-break {
-      page-break-after: always;
-      break-after: page;
     }
 
     .pdf-head { border-bottom: 2px solid #dc2626; padding-bottom: 6px; margin-bottom: 12px; }
@@ -140,14 +131,27 @@
     .pdf-kpi-label { font-size: 9px; color: #64748b; }
     .pdf-kpi-val { font-size: 13px; font-weight: bold; margin-top: 1px; color: #0f172a; }
 
-    .pdf-table-box { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 10px; }
-    .pdf-table-box th, .pdf-table-box td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+    /* 表格允許跨頁自然分行，不截斷文字 */
+    .pdf-table-box { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    .pdf-table-box th, .pdf-table-box td { border: 1px solid #cbd5e1; padding: 5px 8px; text-align: left; }
     .pdf-table-box th { background: #f1f5f9; }
+    .pdf-table-box tr { page-break-inside: avoid; break-inside: avoid; }
 
-    /* 第二頁：滿版地圖 Canvas */
+    /* 強制地圖獨立換到最後一頁滿版 */
+    .pdf-map-page {
+      page-break-before: always;
+      break-before: page;
+      width: 760px;
+      height: 1060px;
+      padding: 24px 28px;
+      box-sizing: border-box;
+      position: relative;
+      background: #fff;
+    }
+
     #pdf-map-canvas-container {
       width: 100%;
-      height: 900px;
+      height: 940px;
       border: 2px solid #94a3b8;
       border-radius: 6px;
       overflow: hidden;
@@ -206,7 +210,7 @@
   <div id="action-container">
     <button id="actionBtn" class="main-btn" onclick="toggleTracking()">出勤開始 (START)</button>
     <div id="status-hint"></div>
-    <button id="downloadPdfBtn" onclick="runDirectPdfExport()">📄 重新下載 2 頁式 PDF 考核報告</button>
+    <button id="downloadPdfBtn" onclick="runDirectPdfExport()">📄 重新下載 PDF 考核報告</button>
   </div>
 
   <!-- 手機即時地圖 -->
@@ -224,15 +228,15 @@
     </div>
   </div>
 
-  <!-- ================= 2 頁式 PDF 導出模板 ================= -->
+  <!-- ================= PDF 導出結構 ================= -->
   <div id="pdf-render-root">
     
-    <!-- 第一頁：數據統計與路況時間軸 (PAGE 1) -->
-    <div class="pdf-page-block pdf-break">
+    <!-- 數據與時間軸區域 (自動順延分頁) -->
+    <div class="pdf-data-section">
       <div class="pdf-head">
         <div class="pdf-main-title">
           <span>消防車輛駕駛出勤 / 考試分析報告</span>
-          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第一頁：數據統計與路況時間軸</span>
+          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">行車紀錄與停頓數據</span>
         </div>
         <div class="pdf-time-sub" id="p-times-summary">
           出勤起步時間：- ｜ 到達目的地時間：-
@@ -276,12 +280,12 @@
       </table>
     </div>
 
-    <!-- 第二頁：滿版純淨地圖 (PAGE 2) -->
-    <div class="pdf-page-block">
+    <!-- 地圖專區：永遠自動移到最後一頁獨立呈現 -->
+    <div class="pdf-map-page">
       <div class="pdf-head">
         <div class="pdf-main-title">
           <span>行車速度與路線全景軌跡地圖</span>
-          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">第二頁：真實街道底圖與軌跡</span>
+          <span style="font-size: 11px; font-weight: normal; color: #4b5563;">高解析街道底圖與軌跡</span>
         </div>
       </div>
       <div id="pdf-map-canvas-container">
@@ -350,7 +354,6 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // 核心升級：只嚴格保留「XX街 與 XX街 交界」或「XX街 近 XX建築物/地標」
     async function fetchDetailedLocation(lat, lon, stopIndex = null) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh-TW,zh-HK`;
@@ -360,27 +363,19 @@
           const addr = data.address;
           const road = addr.road || addr.pedestrian || "";
           const junction = addr.junction || "";
-          
-          // 嚴格抓取具體大廈、屋苑、商場、醫院或學校名稱（絕不讀取 house_number 門牌號）
           const landmark = addr.building || addr.residential || addr.house_name ||
                            addr.amenity || addr.shop || addr.leisure || addr.tourism || "";
 
           let locDesc = "";
-          // 格式 1：交界優先
           if (road && junction) {
             locDesc = `${road} 與 ${junction} 交界`;
-          } 
-          // 格式 2：街道 近 具體建築物
-          else if (road && landmark) {
+          } else if (road && landmark) {
             locDesc = `${road} 近 ${landmark}`;
-          } 
-          // 備援：單一路段或地標
-          else if (road) {
+          } else if (road) {
             locDesc = `${road}`;
           } else if (landmark) {
             locDesc = `近 ${landmark}`;
           } else {
-            // 剔除廣義行政區域，只提取第一段具體名稱
             const rawParts = (data.display_name || "").split(',');
             locDesc = rawParts[0] ? rawParts[0].trim() : "市區路段";
           }
@@ -466,7 +461,6 @@
           document.getElementById('kpi-speed').innerHTML = `${speed.toFixed(1)} <span style="font-size:8px;">km/h</span>`;
           document.getElementById('kpi-speed').style.color = getSpeedColor(speed);
 
-          // 停頓識別 (<=5 km/h)
           if (speed <= 5.0 && currentState !== 'STOPPED') {
             currentState = 'STOPPED';
             stateStartSec = totalSeconds;
@@ -532,7 +526,7 @@
       btn.className = 'main-btn';
       
       document.getElementById('downloadPdfBtn').style.display = 'block';
-      document.getElementById('status-hint').innerText = '🗺️ 正在生成置中大地圖並直接下載 PDF 檔案...';
+      document.getElementById('status-hint').innerText = '🗺️ 正在生成完整資料並直接下載 PDF 檔案...';
 
       setTimeout(() => {
         runDirectPdfExport();
@@ -580,7 +574,6 @@
       });
     }
 
-    // 核心渲染：純淨圓點 + 圓內停頓編號，完全無旁側多餘字眼
     async function buildCenteredMapCanvas() {
       const canvas = document.getElementById('pdf-canvas-element');
       const ctx = canvas.getContext('2d');
@@ -652,7 +645,6 @@
       ctx.fillRect(0, 0, w, h);
 
       if (points.length >= 2) {
-        // 1. 繪製彩色行車軌跡
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
           const p2 = points[i + 1];
@@ -660,25 +652,21 @@
           const pos1 = posToCanvasPixel(p1.lat, p1.lng);
           const pos2 = posToCanvasPixel(p2.lat, p2.lng);
 
-          // 白色外輪廓
           ctx.lineWidth = 14;
           ctx.lineCap = "round";
           ctx.lineJoin = "round";
           ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
           ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
 
-          // 速度色彩內線
           ctx.lineWidth = 9;
           ctx.strokeStyle = getSpeedColor(segSpeed);
           ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
         }
 
-        // 2. 起點 (純綠圓標)
         const startPos = posToCanvasPixel(points[0].lat, points[0].lng);
         ctx.fillStyle = "#10b981"; ctx.beginPath(); ctx.arc(startPos.x, startPos.y, 14, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
 
-        // 3. 停頓點：只在紅色圓圈內顯示停頓號碼（無任何旁側文字）
         let sIdx = 1;
         for (let i = 0; i < points.length; i++) {
           if (points[i].speed <= 5.0 && (i === 0 || points[i-1].speed > 5.0)) {
@@ -702,14 +690,12 @@
           }
         }
 
-        // 4. 終點 (純藍圓標)
         const endPos = posToCanvasPixel(points[points.length - 1].lat, points[points.length - 1].lng);
         ctx.fillStyle = "#3b82f6"; ctx.beginPath(); ctx.arc(endPos.x, endPos.y, 15, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
       }
     }
 
-    // 直接下載 PDF
     async function runDirectPdfExport() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const hours = totalSeconds / 3600;
@@ -749,12 +735,13 @@
         filename:     `消防出勤考核報告_${new Date().toISOString().slice(0,10)}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] }
       };
 
       html2pdf().set(opt).from(container).save().then(() => {
         container.style.display = 'none';
-        document.getElementById('status-hint').innerText = '✅ 2 頁式 PDF 考核報告已成功下載！';
+        document.getElementById('status-hint').innerText = '✅ PDF 考核報告已成功下載！';
       });
     }
   </script>
