@@ -269,7 +269,7 @@
             <th style="width: 14%;">累積時間</th>
             <th style="width: 28%;">事件 / 狀態</th>
             <th style="width: 14%;">持續時長</th>
-            <th style="width: 44%;">街道名稱 與 地標/大廈名稱</th>
+            <th style="width: 44%;">精確路段位置 (交界 / 近建築物)</th>
           </tr>
         </thead>
         <tbody id="p-timeline-rows"></tbody>
@@ -350,6 +350,7 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
+    // 核心升級：只嚴格保留「XX街 與 XX街 交界」或「XX街 近 XX建築物/地標」
     async function fetchDetailedLocation(lat, lon, stopIndex = null) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=zh-TW,zh-HK`;
@@ -358,14 +359,31 @@
         if (data && data.address) {
           const addr = data.address;
           const road = addr.road || addr.pedestrian || "";
-          const landmark = addr.building || addr.residential || addr.house_name || addr.house_number || 
+          const junction = addr.junction || "";
+          
+          // 嚴格抓取具體大廈、屋苑、商場、醫院或學校名稱（絕不讀取 house_number 門牌號）
+          const landmark = addr.building || addr.residential || addr.house_name ||
                            addr.amenity || addr.shop || addr.leisure || addr.tourism || "";
 
           let locDesc = "";
-          if (road && landmark) locDesc = `${road} 近 ${landmark}`;
-          else if (road) locDesc = `${road}`;
-          else if (landmark) locDesc = `近 ${landmark}`;
-          else locDesc = data.display_name.split(',')[0] || "市區路段";
+          // 格式 1：交界優先
+          if (road && junction) {
+            locDesc = `${road} 與 ${junction} 交界`;
+          } 
+          // 格式 2：街道 近 具體建築物
+          else if (road && landmark) {
+            locDesc = `${road} 近 ${landmark}`;
+          } 
+          // 備援：單一路段或地標
+          else if (road) {
+            locDesc = `${road}`;
+          } else if (landmark) {
+            locDesc = `近 ${landmark}`;
+          } else {
+            // 剔除廣義行政區域，只提取第一段具體名稱
+            const rawParts = (data.display_name || "").split(',');
+            locDesc = rawParts[0] ? rawParts[0].trim() : "市區路段";
+          }
 
           if (stopIndex !== null) return `停頓點 ${stopIndex} (${locDesc})`;
           return locDesc;
@@ -459,7 +477,7 @@
               radius: 9, color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 0.95
             }).addTo(map);
 
-            const node = addTimelineNode('STOPPED', totalSeconds, `停頓點 ${currentStopIdx} (車速<=5km/h)`, '識別精確地標中...');
+            const node = addTimelineNode('STOPPED', totalSeconds, `停頓點 ${currentStopIdx} (車速<=5km/h)`, '正在識別地標/交界...');
             marker.bindPopup(`<b>停頓點 ${currentStopIdx} (${formatTimeSec(totalSeconds)})</b>`).openPopup();
 
             fetchDetailedLocation(lat, lng, currentStopIdx).then(locStr => {
@@ -562,7 +580,7 @@
       });
     }
 
-    // 核心渲染：停頓點精確顯示「圓圈+停頓號碼」，完全不出現任何旁側文字
+    // 核心渲染：純淨圓點 + 圓內停頓編號，完全無旁側多餘字眼
     async function buildCenteredMapCanvas() {
       const canvas = document.getElementById('pdf-canvas-element');
       const ctx = canvas.getContext('2d');
@@ -586,7 +604,6 @@
         minLng = c.lng - 0.003; maxLng = c.lng + 0.003;
       }
 
-      // 物理中心點置中
       const centerLat = (minLat + maxLat) / 2;
       const centerLng = (minLng + maxLng) / 2;
 
@@ -631,7 +648,6 @@
 
       await Promise.allSettled(tileTasks);
 
-      // 輕微遮罩突顯線條
       ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
       ctx.fillRect(0, 0, w, h);
 
@@ -644,31 +660,30 @@
           const pos1 = posToCanvasPixel(p1.lat, p1.lng);
           const pos2 = posToCanvasPixel(p2.lat, p2.lng);
 
-          // 白色勾邊
+          // 白色外輪廓
           ctx.lineWidth = 14;
           ctx.lineCap = "round";
           ctx.lineJoin = "round";
           ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
           ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
 
-          // 速度線
+          // 速度色彩內線
           ctx.lineWidth = 9;
           ctx.strokeStyle = getSpeedColor(segSpeed);
           ctx.beginPath(); ctx.moveTo(pos1.x, pos1.y); ctx.lineTo(pos2.x, pos2.y); ctx.stroke();
         }
 
-        // 2. 起點 (純綠色圓標)
+        // 2. 起點 (純綠圓標)
         const startPos = posToCanvasPixel(points[0].lat, points[0].lng);
         ctx.fillStyle = "#10b981"; ctx.beginPath(); ctx.arc(startPos.x, startPos.y, 14, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
 
-        // 3. 停頓點：只在紅色圓圈內清晰印上停頓號碼（無任何旁側文字）
+        // 3. 停頓點：只在紅色圓圈內顯示停頓號碼（無任何旁側文字）
         let sIdx = 1;
         for (let i = 0; i < points.length; i++) {
           if (points[i].speed <= 5.0 && (i === 0 || points[i-1].speed > 5.0)) {
             const sPos = posToCanvasPixel(points[i].lat, points[i].lng);
             
-            // 紅色外圓
             ctx.fillStyle = "#ef4444"; 
             ctx.beginPath(); 
             ctx.arc(sPos.x, sPos.y, 16, 0, Math.PI * 2); 
@@ -677,7 +692,6 @@
             ctx.lineWidth = 3; 
             ctx.stroke();
 
-            // 圓內停頓號碼
             ctx.fillStyle = "#ffffff"; 
             ctx.font = "bold 16px sans-serif"; 
             ctx.textAlign = "center";
@@ -688,16 +702,14 @@
           }
         }
 
-        // 4. 終點 (純藍色圓標)
+        // 4. 終點 (純藍圓標)
         const endPos = posToCanvasPixel(points[points.length - 1].lat, points[points.length - 1].lng);
         ctx.fillStyle = "#3b82f6"; ctx.beginPath(); ctx.arc(endPos.x, endPos.y, 15, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-      } else {
-        // 室內或無位移時：只顯示乾淨的地圖底圖，不顯示任何停駐字眼
       }
     }
 
-    // 直接匯出 PDF
+    // 直接下載 PDF
     async function runDirectPdfExport() {
       const distKm = (totalDistanceMeters / 1000).toFixed(2);
       const hours = totalSeconds / 3600;
